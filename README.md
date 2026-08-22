@@ -1,10 +1,6 @@
 # Nhom8-CNPM
 # 🎓 Tên Dự Án: Hệ thống Quản lý Đào tạo Sau Đại học (Phân hệ X)
 
-**Môn học:** [Tên môn học]  
-**Giảng viên hướng dẫn:** [Tên giảng viên]  
-**Repository GitHub/GitLab:** [Chèn Link Repository của phân hệ vào đây]
-
 ## 👥 Danh sách thành viên và Phân công vai trò
 
 | STT | Họ và tên | MSSV | Vai trò chính | Email / Contact |
