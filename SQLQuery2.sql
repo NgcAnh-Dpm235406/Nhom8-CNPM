@@ -364,6 +364,71 @@ CREATE TABLE [sar_evidence_repository] (
 );
 GO
 
+-- -----------------------------------------------------------------------------
+-- BỔ SUNG: TIẾN ĐỘ BÁO CÁO (XANH/VÀNG/ĐỎ), HỘI ĐỒNG VÀ SLOT GIẢNG VIÊN
+-- -----------------------------------------------------------------------------
+USE [agu_postgrad_db];
+GO
+-- 1. Bổ sung cột max_slots vào bảng lecturers
+ALTER TABLE [lecturers] 
+ADD [max_slots] INT NOT NULL DEFAULT 4;
+GO
+
+-- 2. Bổ sung trạng thái duyệt đề tài vào bảng thesis_progress
+ALTER TABLE [thesis_progress]
+ADD [status] NVARCHAR(30) DEFAULT N'Chờ GVHD duyệt' CHECK ([status] IN (N'Chờ GVHD duyệt', N'Đã duyệt', N'Từ chối', N'Đang thực hiện', N'Hoàn thành')),
+    [rejection_reason] NVARCHAR(MAX) NULL;
+GO
+
+-- 3. BẢNG MỚI: Báo cáo tiến độ chi tiết từng giai đoạn & Cảnh báo màu Xanh/Vàng/Đỏ
+CREATE TABLE [thesis_submissions] (
+    [submission_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+    [thesis_id] BIGINT NOT NULL,
+    [stage_name] NVARCHAR(50) NOT NULL, -- N'Đề cương', N'Tiến độ 1', N'Bản thảo'
+    [report_file_url] NVARCHAR(255) NOT NULL, -- File PDF upload <= 25MB
+    [deadline] DATE NOT NULL,                 -- Node.js cron job quét ngày này
+    [submitted_at] DATETIME NULL,
+    [lecturer_feedback] NVARCHAR(MAX) NULL,   -- Nhận xét của GVHD
+    [color_warning] NVARCHAR(10) DEFAULT 'green' CHECK ([color_warning] IN ('green', 'yellow', 'red')),
+    [status] NVARCHAR(30) DEFAULT N'Chờ đánh giá' CHECK ([status] IN (N'Chờ đánh giá', N'Đạt', N'Cần sửa đổi')),
+    CONSTRAINT [FK_sub_thesis] FOREIGN KEY ([thesis_id]) REFERENCES [thesis_progress]([thesis_id]) ON DELETE CASCADE
+);
+GO
+
+-- 4. BẢNG MỚI: Hội đồng Bảo vệ Luận văn (Admin thành lập hội đồng)
+CREATE TABLE [defense_committees] (
+    [committee_id] INT IDENTITY(1,1) PRIMARY KEY,
+    [committee_name] NVARCHAR(150) NOT NULL,
+    [defense_date] DATE NOT NULL,
+    [defense_room] NVARCHAR(50) NOT NULL,
+    [president_id] INT NOT NULL,     -- Chủ tịch hội đồng
+    [reviewer_1_id] INT NOT NULL,    -- Phản biện 1
+    [reviewer_2_id] INT NOT NULL,    -- Phản biện 2
+    [secretary_id] INT NOT NULL,     -- Thư ký
+    [member_id] INT NOT NULL,        -- Ủy viên
+    [created_at] DATETIME DEFAULT GETDATE(),
+    CONSTRAINT [FK_com_president] FOREIGN KEY ([president_id]) REFERENCES [lecturers]([lecturer_id]),
+    CONSTRAINT [FK_com_rev1] FOREIGN KEY ([reviewer_1_id]) REFERENCES [lecturers]([lecturer_id]),
+    CONSTRAINT [FK_com_rev2] FOREIGN KEY ([reviewer_2_id]) REFERENCES [lecturers]([lecturer_id]),
+    CONSTRAINT [FK_com_sec] FOREIGN KEY ([secretary_id]) REFERENCES [lecturers]([lecturer_id]),
+    CONSTRAINT [FK_com_member] FOREIGN KEY ([member_id]) REFERENCES [lecturers]([lecturer_id])
+);
+GO
+
+-- 5. BẢNG MỚI: Lịch bảo vệ chi tiết từng học viên & Điểm bảo vệ
+CREATE TABLE [thesis_defense_schedules] (
+    [defense_schedule_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+    [thesis_id] BIGINT NOT NULL UNIQUE,
+    [committee_id] INT NOT NULL,
+    [defense_order] INT NOT NULL DEFAULT 1,
+    [start_time] TIME NOT NULL,
+    [average_score] DECIMAL(4,2) NULL CHECK ([average_score] BETWEEN 0 AND 10),
+    [result] NVARCHAR(20) DEFAULT N'Chưa bảo vệ' CHECK ([result] IN (N'Chưa bảo vệ', N'Đạt', N'Không đạt')),
+    CONSTRAINT [FK_sched_thesis] FOREIGN KEY ([thesis_id]) REFERENCES [thesis_progress]([thesis_id]) ON DELETE CASCADE,
+    CONSTRAINT [FK_sched_committee] FOREIGN KEY ([committee_id]) REFERENCES [defense_committees]([committee_id])
+);
+GO
+
 -- =============================================================================
 -- PHẦN 2: TRIGGER & STORED PROCEDURE
 -- =============================================================================
