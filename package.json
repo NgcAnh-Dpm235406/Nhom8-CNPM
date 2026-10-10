@@ -1,0 +1,29 @@
+{
+  "name": "nhom8-cnpm",
+  "version": "1.0.0",
+  "description": "| STT | Họ và tên | MSSV | Vai trò chính | Email / Contact |\r |:---:|---|---|---|---|\r | 1 | Nguyễn Huỳnh Ngọc Anh | DPM235406 | **Product Owner (PO) / Team Lead** |\r | 2 | Nguyễn Thị Ngân Huệ| DPM235422 | **Frontend Developer** | \r | 3 | Huỳnh Hiếu| DPM235419 | **Frontend Developer** | \r | 4 | Mạc Dương Hoàng Phúc | DPM235466 | **Backend Developer** | \r | 5 | Lê Trương Bảo Trân| DPM235487 | **Backend Developer** | \r | 6 | Ngô Đình Khang | DPM235428 | **QA / Security & Data Specialist** | \r | 7 | Lâm Thái Khang | DPM235426 | **DevOps / Cloud Engineer**",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NgcAnh-Dpm235406/Nhom8-CNPM.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/NgcAnh-Dpm235406/Nhom8-CNPM/issues"
+  },
+  "homepage": "https://github.com/NgcAnh-Dpm235406/Nhom8-CNPM#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "mssql": "^12.7.4",
+    "multer": "^2.4.0",
+    "node-cron": "^4.6.0",
+    "socket.io": "^4.8.4"
+  }
+}

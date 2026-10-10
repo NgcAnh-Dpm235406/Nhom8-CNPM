@@ -1,4 +1,4 @@
-export type TabType = 'home' | 'register' | 'lookup' | 'student' | 'faculty';
+export type TabType = 'home' | 'register' | 'lookup' | 'student' | 'faculty' | 'login' ;
 
 export interface AdmissionFormData {
   fullName: string;

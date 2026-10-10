@@ -29,6 +29,15 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
             <HomeIcon className="w-4 h-4" />
             <span>Trang Chủ</span>
           </button>
+
+
+          <button 
+            onClick={() => setActiveTab('login')}
+             className={`px-3 py-2 rounded-xl transition ${activeTab === 'login' ? 'bg-white text-sky-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+                Đăng nhập
+          </button>
+
           <button 
             onClick={() => setActiveTab('register')}
             className={`px-3 py-2 rounded-xl transition ${activeTab === 'register' ? 'bg-white text-sky-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
