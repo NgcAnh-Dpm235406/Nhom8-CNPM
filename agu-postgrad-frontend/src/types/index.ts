@@ -4,6 +4,7 @@ export type TabType =
   | 'register'
   | 'lookup'
   | 'student'
+  | 'student-profile'
   | 'faculty'
   | 'admin-admissions'
   | 'admin-committees'
@@ -50,6 +51,75 @@ export interface Lecturer {
   phone: string | null;
   current_assigned: number;
   slots_left: number;
+}
+
+export interface LecturerStudent {
+  student_id: number;
+  student_code: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  topic_title: string | null;
+  assignment_status: string;
+}
+
+export interface StudentInfo {
+  student_id: number;
+  student_code: string;
+  academic_status: string;
+  enrollment_date: string;
+  full_name: string;
+  dob: string;
+  id_card_number: string;
+  email: string;
+  phone: string;
+  address: string | null;
+  cohort: string;
+  orientation: string;
+  total_credits: number;
+  major_code: string;
+  major_name: string;
+}
+
+export interface StudentThesisProgress {
+  thesis_id: number;
+  thesis_title: string;
+  current_stage: string;
+  progress_percent: number;
+  status: string;
+}
+
+export interface StudentAdvisor {
+  role: string;
+  status: string;
+  lecturer_name: string;
+  degree: string;
+  email: string;
+  phone: string | null;
+}
+
+export interface FacultyAdvisorRequest {
+  advisor_assignment_id: number;
+  role: string;
+  assigned_date: string;
+  status: string;
+  student_id: number;
+  student_code: string;
+  student_name: string;
+  email: string;
+  phone: string;
+  thesis_title: string | null;
+  current_stage: string | null;
+  progress_percent: number | null;
+}
+
+export interface FacultyAdvisorDashboard {
+  quota: {
+    maxSlots: number;
+    assignedCount: number;
+    slotsLeft: number;
+  };
+  requests: FacultyAdvisorRequest[];
 }
 
 export interface LecturerInput {

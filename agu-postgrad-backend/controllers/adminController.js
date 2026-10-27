@@ -78,6 +78,42 @@ exports.getLecturers = async (req, res) => {
     }
 };
 
+exports.getLecturerStudents = async (req, res) => {
+    const lecturerId = parseLecturerId(req.params.id);
+    if (!lecturerId) {
+        return res.status(400).json({ success: false, message: 'Mã giảng viên không hợp lệ.' });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const lecturerResult = await pool.request()
+            .input('lecturerId', sql.Int, lecturerId)
+            .query(`SELECT lecturer_id FROM lecturers WHERE lecturer_id = @lecturerId`);
+
+        if (lecturerResult.recordset.length === 0) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy giảng viên.' });
+        }
+
+        const studentsResult = await pool.request()
+            .input('lecturerId', sql.Int, lecturerId)
+            .query(`
+                SELECT s.student_id, s.student_code, p.full_name, p.email, p.phone,
+                       tp.thesis_title AS topic_title, aa.status AS assignment_status
+                FROM advisor_assignments aa
+                JOIN students s ON s.student_id = aa.student_id
+                JOIN admission_profiles p ON p.profile_id = s.profile_id
+                LEFT JOIN thesis_progress tp ON tp.student_id = s.student_id
+                WHERE aa.lecturer_id = @lecturerId
+                  AND aa.status IN (N'Đang hướng dẫn', N'Chờ GVHD duyệt')
+                ORDER BY p.full_name ASC
+            `);
+
+        return res.json({ success: true, students: studentsResult.recordset });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
 exports.getCommittees = async (req, res) => {
     try {
         const pool = await poolPromise;

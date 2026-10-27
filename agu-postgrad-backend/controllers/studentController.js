@@ -32,6 +32,7 @@ exports.getMyInfo = async (req, res) => {
                     p.id_card_number,
                     p.phone,
                     p.email,
+                    p.address,
                     c.cohort,
                     c.orientation,
                     c.total_credits,
@@ -51,6 +52,81 @@ exports.getMyInfo = async (req, res) => {
         res.json({ success: true, student: result.recordset[0] });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+exports.updateMyInfo = async (req, res) => {
+    const { email, phone, address = '' } = req.body || {};
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || email.trim().length > 100) {
+        return res.status(400).json({ success: false, message: 'Vui lòng nhập email hợp lệ (tối đa 100 ký tự).' });
+    }
+    if (typeof phone !== 'string' || phone.trim().length < 8 || phone.trim().length > 15 || !/^[0-9+().\-\s]+$/.test(phone.trim())) {
+        return res.status(400).json({ success: false, message: 'Vui lòng nhập số điện thoại hợp lệ (8–15 ký tự).' });
+    }
+    if (typeof address !== 'string' || address.length > 500) {
+        return res.status(400).json({ success: false, message: 'Địa chỉ không được vượt quá 500 ký tự.' });
+    }
+
+    let transaction;
+    try {
+        const pool = await poolPromise;
+        const studentId = await resolveStudentId(pool, req.user);
+        if (!studentId) {
+            return res.status(404).json({ success: false, message: 'Tài khoản chưa được liên kết với hồ sơ học viên.' });
+        }
+
+        const studentResult = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT s.user_id, s.profile_id, p.email, p.phone, p.address
+                FROM students s
+                JOIN admission_profiles p ON p.profile_id = s.profile_id
+                WHERE s.student_id = @studentId
+            `);
+        const student = studentResult.recordset[0];
+        if (!student) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ học viên.' });
+        }
+
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        await transaction.request()
+            .input('userId', sql.BigInt, student.user_id)
+            .input('profileId', sql.BigInt, student.profile_id)
+            .input('email', sql.VarChar(100), email.trim().toLowerCase())
+            .input('phone', sql.VarChar(15), phone.trim())
+            .input('address', sql.NVarChar(500), address.trim() || null)
+            .query(`
+                UPDATE users SET email = @email WHERE user_id = @userId;
+                UPDATE admission_profiles
+                SET email = @email, phone = @phone, address = @address
+                WHERE profile_id = @profileId;
+            `);
+        await transaction.commit();
+
+        await writeAuditLog(
+            req.user?.user_id,
+            'UPDATE_STUDENT_PROFILE',
+            'admission_profiles',
+            student.profile_id,
+            { email: student.email, phone: student.phone, address: student.address },
+            { email: email.trim().toLowerCase(), phone: phone.trim(), address: address.trim() || null },
+            req.ip
+        );
+        return res.json({ success: true, message: 'Cập nhật thông tin cá nhân thành công.' });
+    } catch (err) {
+        if (transaction) {
+            try {
+                await transaction.rollback();
+            } catch (rollbackError) {
+                console.error('Lỗi hoàn tác cập nhật thông tin học viên:', rollbackError);
+            }
+        }
+        if (err.number === 2627 || err.number === 2601) {
+            return res.status(409).json({ success: false, message: 'Email này đã được tài khoản khác sử dụng.' });
+        }
+        console.error('Lỗi cập nhật thông tin học viên:', err);
+        return res.status(500).json({ success: false, message: 'Không thể cập nhật thông tin cá nhân.' });
     }
 };
 

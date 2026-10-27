@@ -212,29 +212,46 @@ exports.reviewProfile = async (req, res) => {
 
 // 6. Quyết định công nhận trúng tuyển & Cấp MSHV tự động (POST /api/admission/profiles/:id/admit)
 exports.admitCandidate = async (req, res) => {
+    let transaction;
     try {
         const { id } = req.params;
         const { curriculumId = 1 } = req.body;
 
         const pool = await poolPromise;
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
 
         // 1. Kiểm tra hồ sơ
-        const profileRes = await pool.request()
+        const profileRes = await transaction.request()
             .input('profileId', sql.BigInt, id)
-            .query(`SELECT * FROM admission_profiles WHERE profile_id = @profileId`);
+            .query(`
+                SELECT p.*, c.academic_year
+                FROM admission_profiles p
+                JOIN admission_campaigns c ON c.campaign_id = p.campaign_id
+                WHERE p.profile_id = @profileId
+            `);
 
         if (profileRes.recordset.length === 0) {
+            await transaction.rollback();
             return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ thí sinh!' });
         }
 
         const candidate = profileRes.recordset[0];
+        if (candidate.status !== 'Đạt yêu cầu') {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: 'Chỉ có thể công nhận trúng tuyển hồ sơ đã đạt yêu cầu.'
+            });
+        }
 
         // 2. Kiểm tra nếu đã nhập học rồi
-        const existStudent = await pool.request()
+        const existStudent = await transaction.request()
             .input('profileId', sql.BigInt, id)
             .query(`SELECT student_code FROM students WHERE profile_id = @profileId`);
 
         if (existStudent.recordset.length > 0) {
+            await transaction.rollback();
             return res.status(400).json({
                 success: false,
                 message: `Thí sinh này đã được cấp MSHV: ${existStudent.recordset[0].student_code}!`
@@ -246,7 +263,7 @@ exports.admitCandidate = async (req, res) => {
         const defaultPassword = 'AGU@' + candidate.id_card_number.slice(-4);
         const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
-        const userInsert = await pool.request()
+        const userInsert = await transaction.request()
             .input('username', sql.VarChar, username)
             .input('passwordHash', sql.VarChar, passwordHash)
             .input('email', sql.VarChar, candidate.email)
@@ -260,11 +277,11 @@ exports.admitCandidate = async (req, res) => {
         const newUserId = userInsert.recordset[0].user_id;
 
         // 4. Sinh MSHV chuẩn AGU (Ví dụ: 26M + Mã Ngành + STT, hoặc 26M8480205 + STT)
-        const yearPrefix = String(new Date().getFullYear()).slice(-2) + 'M';
-        const studentCode = `${yearPrefix}8480205${String(candidate.profile_id).padStart(3, '0')}`;
+        const yearPrefix = String(candidate.academic_year || new Date().getFullYear()).slice(-2) + 'M';
+        const studentCode = `${yearPrefix}8480205${String(candidate.profile_id).padStart(2, '0')}`;
 
         // 5. Thêm vào bảng students
-        const studentInsert = await pool.request()
+        const studentInsert = await transaction.request()
             .input('userId', sql.BigInt, newUserId)
             .input('studentCode', sql.VarChar, studentCode)
             .input('profileId', sql.BigInt, candidate.profile_id)
@@ -278,12 +295,12 @@ exports.admitCandidate = async (req, res) => {
         const newStudentId = studentInsert.recordset[0].student_id;
 
         // 6. Cập nhật trạng thái tuyển sinh
-        await pool.request()
+        await transaction.request()
             .input('profileId', sql.BigInt, candidate.profile_id)
             .query(`UPDATE admission_profiles SET admission_status = N'Đã nhập học', status = N'Đạt yêu cầu' WHERE profile_id = @profileId`);
 
         // 7. Tạo học phí kỳ 1 mặc định (14.500.000 VNĐ)
-        await pool.request()
+        await transaction.request()
             .input('studentId', sql.BigInt, newStudentId)
             .input('semesterId', sql.Int, 1)
             .input('baseAmount', sql.Decimal(12, 2), 14500000.00)
@@ -291,6 +308,8 @@ exports.admitCandidate = async (req, res) => {
                 INSERT INTO tuition_fees (student_id, semester_id, base_amount, due_date, paid_amount, status)
                 VALUES (@studentId, @semesterId, @baseAmount, DATEADD(month, 1, GETDATE()), 0, N'Chưa thanh toán')
             `);
+
+        await transaction.commit();
 
         // 8. Ghi Audit Log
         await writeAuditLog(req.user?.user_id, 'ADMIT_STUDENT', 'students', newStudentId, null, { studentCode, username }, req.ip);
@@ -307,6 +326,13 @@ exports.admitCandidate = async (req, res) => {
             }
         });
     } catch (err) {
+        if (transaction) {
+            try {
+                await transaction.rollback();
+            } catch (rollbackError) {
+                console.error('Lỗi hoàn tác giao dịch nhập học:', rollbackError);
+            }
+        }
         console.error('Lỗi khi nhập học thí sinh:', err);
         return res.status(500).json({ success: false, message: 'Lỗi server: ' + err.message });
     }

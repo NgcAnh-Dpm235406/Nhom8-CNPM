@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.use(verifyToken, requireRoles('ADMIN'));
 router.get('/lecturers', adminController.getLecturers);
+router.get('/lecturers/:id/students', adminController.getLecturerStudents);
 router.get('/committees', adminController.getCommittees);
 router.get('/defense-candidates', adminController.getDefenseCandidates);
 router.get('/defense-schedules/:id/evaluations', adminController.getDefenseEvaluations);

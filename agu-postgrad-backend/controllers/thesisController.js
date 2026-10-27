@@ -22,16 +22,40 @@ async function resolveLecturerId(pool, user) {
 exports.registerAdvisor = async (req, res) => {
     try {
         const { lecturerId, role = 'Hướng dẫn chính' } = req.body;
+        const parsedLecturerId = Number(lecturerId);
+        if (!Number.isSafeInteger(parsedLecturerId) || parsedLecturerId <= 0) {
+            return res.status(400).json({ success: false, message: 'Vui lòng chọn giảng viên hợp lệ!' });
+        }
+
         const pool = await poolPromise;
         const studentId = await resolveStudentId(pool, req.user);
 
-        if (!studentId || !lecturerId) {
+        if (!studentId) {
             return res.status(400).json({ success: false, message: 'Thiếu thông tin học viên hoặc giảng viên!' });
+        }
+
+        const activeRequest = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT TOP 1 status
+                FROM advisor_assignments
+                WHERE student_id = @studentId
+                  AND status IN (N'Chờ GVHD duyệt', N'Đang hướng dẫn')
+                ORDER BY assigned_date DESC
+            `);
+        if (activeRequest.recordset.length > 0) {
+            const status = activeRequest.recordset[0].status;
+            return res.status(400).json({
+                success: false,
+                message: status === 'Đang hướng dẫn'
+                    ? 'Bạn đã có giảng viên hướng dẫn đang phụ trách.'
+                    : 'Bạn đang có yêu cầu giảng viên hướng dẫn chờ phê duyệt.'
+            });
         }
 
         // Kiểm tra giảng viên và số slot còn lại
         const lecCheck = await pool.request()
-            .input('lecId', sql.Int, lecturerId)
+            .input('lecId', sql.Int, parsedLecturerId)
             .query(`
                 SELECT max_slots, degree,
                     (SELECT COUNT(*) FROM advisor_assignments WHERE lecturer_id = @lecId AND status = N'Đang hướng dẫn') AS assigned_count
@@ -50,28 +74,53 @@ exports.registerAdvisor = async (req, res) => {
         // Kiểm tra xem học viên đã gửi yêu cầu cho GV này chưa
         const existReq = await pool.request()
             .input('studentId', sql.BigInt, studentId)
-            .input('lecId', sql.Int, lecturerId)
+            .input('lecId', sql.Int, parsedLecturerId)
             .query(`SELECT advisor_assignment_id, status FROM advisor_assignments WHERE student_id = @studentId AND lecturer_id = @lecId`);
 
         if (existReq.recordset.length > 0) {
-            return res.status(400).json({ success: false, message: `Bạn đã có yêu cầu với giảng viên này (Trạng thái: ${existReq.recordset[0].status})!` });
+            if (existReq.recordset[0].status !== 'Từ chối' && existReq.recordset[0].status !== 'Đã hủy') {
+                return res.status(400).json({ success: false, message: `Bạn đã có yêu cầu với giảng viên này (Trạng thái: ${existReq.recordset[0].status})!` });
+            }
+
+            await pool.request()
+                .input('assignmentId', sql.BigInt, existReq.recordset[0].advisor_assignment_id)
+                .query(`
+                    UPDATE advisor_assignments
+                    SET status = N'Chờ GVHD duyệt', assigned_date = CAST(GETDATE() AS DATE)
+                    WHERE advisor_assignment_id = @assignmentId
+                `);
+            await writeAuditLog(
+                req.user?.user_id,
+                'REREGISTER_ADVISOR',
+                'advisor_assignments',
+                existReq.recordset[0].advisor_assignment_id,
+                { status: existReq.recordset[0].status },
+                { status: 'Chờ GVHD duyệt', lecturerId: parsedLecturerId, studentId },
+                req.ip
+            );
+            const io = req.app.get('io');
+            if (io) io.emit('advisor_request_received', { lecturerId: parsedLecturerId, studentId });
+            return res.status(201).json({
+                success: true,
+                message: 'Gửi lại yêu cầu đăng ký hướng dẫn thành công! Đang chờ Thầy/Cô xét duyệt.'
+            });
         }
 
         await pool.request()
             .input('studentId', sql.BigInt, studentId)
-            .input('lecId', sql.Int, lecturerId)
+            .input('lecId', sql.Int, parsedLecturerId)
             .input('role', sql.NVarChar, role)
             .query(`
                 INSERT INTO advisor_assignments (student_id, lecturer_id, role, status)
                 VALUES (@studentId, @lecId, @role, N'Chờ GVHD duyệt')
             `);
 
-        await writeAuditLog(req.user?.user_id, 'REGISTER_ADVISOR', 'advisor_assignments', null, null, { lecturerId, studentId }, req.ip);
+        await writeAuditLog(req.user?.user_id, 'REGISTER_ADVISOR', 'advisor_assignments', null, null, { lecturerId: parsedLecturerId, studentId }, req.ip);
 
         // Bắn Socket thông báo nếu có io gắn vào app
         const io = req.app.get('io');
         if (io) {
-            io.emit('advisor_request_received', { lecturerId, studentId });
+            io.emit('advisor_request_received', { lecturerId: parsedLecturerId, studentId });
         }
 
         res.status(201).json({ success: true, message: 'Gửi yêu cầu đăng ký hướng dẫn thành công! Đang chờ Thầy/Cô xét duyệt.' });
@@ -103,6 +152,9 @@ exports.getFacultyAdvisingRequests = async (req, res) => {
             `);
 
         const lecturerInfo = quotaRes.recordset[0];
+        if (!lecturerInfo) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ giảng viên!' });
+        }
 
         // Lấy danh sách yêu cầu chờ duyệt & đang hướng dẫn
         const requestsRes = await pool.request()
@@ -145,55 +197,120 @@ exports.getFacultyAdvisingRequests = async (req, res) => {
 
 // 3. Giảng viên phê duyệt hoặc từ chối nhận hướng dẫn (PUT /api/faculty/advising-requests/:id)
 exports.respondAdvisingRequest = async (req, res) => {
+    let transaction;
     try {
         const { id } = req.params;
         const { action } = req.body; // 'accept' hoặc 'reject'
-        const pool = await poolPromise;
+        if (action !== 'accept' && action !== 'reject') {
+            return res.status(400).json({ success: false, message: 'Thao tác phê duyệt không hợp lệ!' });
+        }
 
-        const assignRes = await pool.request()
+        const pool = await poolPromise;
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        const assignRes = await transaction.request()
             .input('id', sql.BigInt, id)
-            .query(`SELECT lecturer_id, student_id, status FROM advisor_assignments WHERE advisor_assignment_id = @id`);
+            .query(`
+                SELECT lecturer_id, student_id, status
+                FROM advisor_assignments WITH (UPDLOCK, HOLDLOCK)
+                WHERE advisor_assignment_id = @id
+            `);
 
         if (assignRes.recordset.length === 0) {
+            await transaction.rollback();
             return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu hướng dẫn!' });
         }
 
         const assignRecord = assignRes.recordset[0];
+        if (req.user.role_code !== 'ADMIN') {
+            const lecturerId = await resolveLecturerId(pool, req.user);
+            if (!lecturerId || Number(lecturerId) !== Number(assignRecord.lecturer_id)) {
+                await transaction.rollback();
+                return res.status(403).json({ success: false, message: 'Bạn không có quyền xử lý yêu cầu này!' });
+            }
+        }
+        if (assignRecord.status !== 'Chờ GVHD duyệt') {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: 'Yêu cầu này đã được xử lý trước đó.' });
+        }
+
         const newStatus = action === 'accept' ? 'Đang hướng dẫn' : 'Từ chối';
 
         if (action === 'accept') {
             // Kiểm tra lại slot trước khi chốt nhận
-            const slotCheck = await pool.request()
+            const slotCheck = await transaction.request()
                 .input('lecId', sql.Int, assignRecord.lecturer_id)
                 .query(`
-                    SELECT max_slots, 
+                    SELECT l.max_slots,
                            (SELECT COUNT(*) FROM advisor_assignments WHERE lecturer_id = @lecId AND status = N'Đang hướng dẫn') AS current_assigned
-                    FROM lecturers WHERE lecturer_id = @lecId
+                    FROM lecturers l WITH (UPDLOCK, HOLDLOCK)
+                    WHERE l.lecturer_id = @lecId
                 `);
+            if (slotCheck.recordset.length === 0) {
+                await transaction.rollback();
+                return res.status(404).json({ success: false, message: 'Không tìm thấy giảng viên phụ trách yêu cầu này.' });
+            }
             const { max_slots, current_assigned } = slotCheck.recordset[0];
             if (current_assigned >= max_slots) {
+                await transaction.rollback();
                 return res.status(400).json({ success: false, message: 'Giảng viên đã hết slot hướng dẫn, không thể nhận thêm!' });
+            }
+
+            const studentAdvisor = await transaction.request()
+                .input('studentId', sql.BigInt, assignRecord.student_id)
+                .input('assignmentId', sql.BigInt, id)
+                .query(`
+                    SELECT TOP 1 advisor_assignment_id
+                    FROM advisor_assignments
+                    WHERE student_id = @studentId
+                      AND advisor_assignment_id <> @assignmentId
+                      AND status = N'Đang hướng dẫn'
+                `);
+            if (studentAdvisor.recordset.length > 0) {
+                await transaction.rollback();
+                return res.status(400).json({ success: false, message: 'Học viên đã có giảng viên hướng dẫn khác.' });
             }
         }
 
-        await pool.request()
+        const updateResult = await transaction.request()
             .input('id', sql.BigInt, id)
             .input('status', sql.NVarChar, newStatus)
-            .query(`UPDATE advisor_assignments SET status = @status WHERE advisor_assignment_id = @id`);
+            .query(`
+                UPDATE advisor_assignments
+                SET status = @status
+                WHERE advisor_assignment_id = @id AND status = N'Chờ GVHD duyệt'
+            `);
+        if (updateResult.rowsAffected[0] === 0) {
+            await transaction.rollback();
+            return res.status(409).json({ success: false, message: 'Yêu cầu vừa được xử lý ở nơi khác. Hãy tải lại danh sách.' });
+        }
+        let assignedCount = null;
+        if (action === 'accept') {
+            const countRes = await transaction.request()
+                .input('lecId', sql.Int, assignRecord.lecturer_id)
+                .query(`SELECT COUNT(*) AS c FROM advisor_assignments WHERE lecturer_id = @lecId AND status = N'Đang hướng dẫn'`);
+            assignedCount = countRes.recordset[0].c;
+        }
+        await transaction.commit();
 
         // Bắn Socket realtime cập nhật slot
         const io = req.app.get('io');
-        if (io) {
-            const countRes = await pool.request()
-                .input('lecId', sql.Int, assignRecord.lecturer_id)
-                .query(`SELECT COUNT(*) AS c FROM advisor_assignments WHERE lecturer_id = @lecId AND status = N'Đang hướng dẫn'`);
-            io.emit('slot_updated', { lecturerId: assignRecord.lecturer_id, currentSlots: countRes.recordset[0].c });
+        if (io && assignedCount !== null) {
+            io.emit('slot_updated', { lecturerId: assignRecord.lecturer_id, currentSlots: assignedCount });
         }
 
         await writeAuditLog(req.user?.user_id, 'RESPOND_ADVISOR_REQUEST', 'advisor_assignments', id, { oldStatus: assignRecord.status }, { newStatus }, req.ip);
 
         res.json({ success: true, message: `Đã ${action === 'accept' ? 'đồng ý nhận' : 'từ chối'} hướng dẫn học viên!` });
     } catch (err) {
+        if (transaction) {
+            try {
+                await transaction.rollback();
+            } catch (rollbackError) {
+                console.error('Lỗi hoàn tác cập nhật yêu cầu hướng dẫn:', rollbackError);
+            }
+        }
         res.status(500).json({ success: false, message: err.message });
     }
 };
@@ -211,6 +328,20 @@ exports.registerThesisTopic = async (req, res) => {
 
         if (!studentId) {
             return res.status(400).json({ success: false, message: 'Thiếu mã học viên!' });
+        }
+
+        const advisorRes = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT TOP 1 advisor_assignment_id
+                FROM advisor_assignments
+                WHERE student_id = @studentId AND status = N'Đang hướng dẫn'
+            `);
+        if (advisorRes.recordset.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Bạn cần có giảng viên hướng dẫn đã chấp nhận trước khi đăng ký đề tài.'
+            });
         }
 
         const checkThesis = await pool.request()
@@ -266,6 +397,11 @@ exports.getMyThesisProgress = async (req, res) => {
                 FROM advisor_assignments aa
                 JOIN lecturers l ON aa.lecturer_id = l.lecturer_id
                 WHERE aa.student_id = @studentId
+                ORDER BY CASE aa.status
+                    WHEN N'Đang hướng dẫn' THEN 0
+                    WHEN N'Chờ GVHD duyệt' THEN 1
+                    ELSE 2
+                END, aa.assigned_date DESC
             `);
 
         // 3. Danh sách các bài nộp theo từng mốc (kèm màu cảnh báo Xanh/Vàng/Đỏ)

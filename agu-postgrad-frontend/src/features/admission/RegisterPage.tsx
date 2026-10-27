@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Send, CheckCircle2 } from 'lucide-react';
 import { FileUploadZone } from '../../components/common/FileUploadZone';
+import { api } from '../../services/api';
 
 interface Props {
   initialMajorCode?: string;
@@ -17,14 +18,42 @@ export const RegisterPage: React.FC<Props> = ({ initialMajorCode = 'KTPM' }) => 
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [profileCode, setProfileCode] = useState('');
+  const [uploadKey, setUploadKey] = useState(0);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedFile) {
-      alert('Vui lòng tải lên file hồ sơ minh chứng (≤ 25MB)!');
+      setSubmitError('Vui lòng tải lên file hồ sơ minh chứng (≤ 25MB)!');
       return;
     }
-    setIsSubmitted(true);
+
+    setIsSubmitting(true);
+    setSubmitError('');
+    try {
+      const requestData = new FormData();
+      requestData.append('fullName', formData.fullName);
+      requestData.append('email', formData.email);
+      requestData.append('phone', formData.phone);
+      requestData.append('idCardNumber', formData.idCardNumber);
+      requestData.append('majorCode', formData.majorCode);
+      requestData.append('admissionType', formData.admissionType);
+      requestData.append('degree_file', selectedFile);
+
+      const result = await api.admission.register(requestData);
+      if (!result.success) {
+        throw new Error(result.message || 'Không thể nộp hồ sơ.');
+      }
+
+      setProfileCode(result.data.profileCode);
+      setIsSubmitted(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Không thể nộp hồ sơ. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -41,8 +70,26 @@ export const RegisterPage: React.FC<Props> = ({ initialMajorCode = 'KTPM' }) => 
         <div className="bg-white rounded-3xl p-8 shadow-sm text-center border border-slate-200">
           <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-slate-800">Nộp Hồ Sơ Thành Công!</h2>
-          <p className="text-slate-600 mt-2">Mã hồ sơ: <span className="font-mono font-bold text-sky-600">THS-2026-0892</span></p>
-          <button onClick={() => setIsSubmitted(false)} className="mt-6 px-6 py-2.5 bg-sky-600 text-white rounded-xl text-sm font-medium">
+          <p className="text-slate-600 mt-2">Mã hồ sơ: <span className="font-mono font-bold text-sky-600">{profileCode}</span></p>
+          <button
+            type="button"
+            onClick={() => {
+              setFormData({
+                fullName: '',
+                email: '',
+                phone: '',
+                idCardNumber: '',
+                majorCode: initialMajorCode,
+                admissionType: 'xet_tuyen'
+              });
+              setSelectedFile(null);
+              setProfileCode('');
+              setSubmitError('');
+              setUploadKey(key => key + 1);
+              setIsSubmitted(false);
+            }}
+            className="mt-6 px-6 py-2.5 bg-sky-600 text-white rounded-xl text-sm font-medium"
+          >
             Nộp hồ sơ khác
           </button>
         </div>
@@ -83,11 +130,17 @@ export const RegisterPage: React.FC<Props> = ({ initialMajorCode = 'KTPM' }) => 
             </div>
           </div>
 
-          <FileUploadZone onFileSelect={setSelectedFile} maxSizeMB={25} />
+          <FileUploadZone key={uploadKey} onFileSelect={setSelectedFile} maxSizeMB={25} />
+
+          {submitError && (
+            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              {submitError}
+            </p>
+          )}
 
           <div className="flex justify-end pt-2">
-            <button type="submit" className="flex items-center space-x-2 px-8 py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-xl shadow transition">
-              <span>Nộp Hồ Sơ</span>
+            <button type="submit" disabled={isSubmitting} className="flex items-center space-x-2 px-8 py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-xl shadow transition disabled:cursor-not-allowed disabled:opacity-60">
+              <span>{isSubmitting ? 'Đang gửi hồ sơ...' : 'Nộp Hồ Sơ'}</span>
               <Send className="w-4 h-4" />
             </button>
           </div>

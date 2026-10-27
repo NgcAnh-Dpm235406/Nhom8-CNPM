@@ -8,6 +8,7 @@ import { HomePage } from './features/home/HomePage';
 import { RegisterPage } from './features/admission/RegisterPage';
 import { ResultLookupPage } from './features/lookup/ResultLookupPage';
 import { StudentDashboard } from './features/student/StudentDashboard';
+import { StudentProfilePage } from './features/student/StudentProfilePage';
 import { FacultyDashboard } from './features/faculty/FacultyDashboard';
 import { AdminDashboard } from './features/admin/AdminDashboard';
 
@@ -71,7 +72,7 @@ export default function App() {
 
   const allowedTabs: TabType[] = session
     ? session.user.roleCode === 'STUDENT'
-      ? ['home', 'student']
+      ? ['home', 'student', 'student-profile']
       : session.user.roleCode === 'LECTURER'
         ? ['home', 'faculty']
         : ['home', 'admin-admissions', 'admin-committees', 'admin-lecturers']
@@ -111,6 +112,7 @@ export default function App() {
         {activeTab === 'register' && allowedTabs.includes('register') && <RegisterPage initialMajorCode={selectedMajor} />}
         {activeTab === 'lookup' && allowedTabs.includes('lookup') && <ResultLookupPage />}
         {activeTab === 'student' && allowedTabs.includes('student') && <StudentDashboard />}
+        {activeTab === 'student-profile' && allowedTabs.includes('student-profile') && <StudentProfilePage />}
         {activeTab === 'faculty' && allowedTabs.includes('faculty') && <FacultyDashboard />}
         {activeAdminSection && allowedTabs.includes(activeTab) && (
           <AdminDashboard

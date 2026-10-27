@@ -5,8 +5,13 @@ import type {
   DefenseCandidate,
   DefenseEvaluationInput,
   DefenseEvaluationRecord,
+  FacultyAdvisorDashboard,
   Lecturer,
-  LecturerInput
+  LecturerInput,
+  LecturerStudent,
+  StudentAdvisor,
+  StudentInfo,
+  StudentThesisProgress
 } from '../types';
 
 const BASE_URL = '/api';
@@ -73,7 +78,11 @@ export const api = {
   admission: {
     getCampaigns: () => request('/admission/campaigns'),
     register: (formData: FormData) =>
-      request('/admission/register', { method: 'POST', body: formData }),
+      request<{
+        success: boolean;
+        message: string;
+        data: { profileId: number; profileCode: string };
+      }>('/admission/register', { method: 'POST', body: formData }),
     lookup: (key: string) => request(`/admission/lookup?key=${encodeURIComponent(key)}`),
     getAllProfiles: (params?: { status?: string; admissionStatus?: string; campaignId?: number }) => {
       const query = new URLSearchParams();
@@ -108,6 +117,8 @@ export const api = {
 
   admin: {
     getLecturers: () => request<{ success: boolean; lecturers: Lecturer[] }>('/admin/lecturers'),
+    getLecturerStudents: (lecturerId: number) =>
+      request<{ success: boolean; students: LecturerStudent[] }>(`/admin/lecturers/${lecturerId}/students`),
     getCommittees: () => request<{ success: boolean; committees: AdminCommitteeRecord[] }>('/admin/committees'),
     getDefenseCandidates: () =>
       request<{ success: boolean; candidates: DefenseCandidate[] }>('/admin/defense-candidates'),
@@ -140,7 +151,12 @@ export const api = {
 
   // 4. Phân hệ Học viên & Điểm số
   student: {
-    getMyInfo: () => request('/students/me'),
+    getMyInfo: () => request<{ success: boolean; student: StudentInfo }>('/students/me'),
+    updateMyInfo: (body: { email: string; phone: string; address: string }) =>
+      request<{ success: boolean; message: string }>('/students/me', {
+        method: 'PUT',
+        body: JSON.stringify(body)
+      }),
     getTuition: (studentId?: number | string) =>
       request(`/students/tuition${studentId ? `?studentId=${studentId}` : ''}`),
     payTuition: (tuitionId: number | string, amount: number) =>
@@ -157,15 +173,24 @@ export const api = {
   // 5. Phân hệ Luận văn, GVHD & Tiến độ 5 mốc
   thesis: {
     registerAdvisor: (body: { lecturerId: number; role?: string }) =>
-      request('/thesis/register-advisor', { method: 'POST', body: JSON.stringify(body) }),
+      request<{ success: boolean; message: string }>('/thesis/register-advisor', { method: 'POST', body: JSON.stringify(body) }),
     getFacultyAdvisingRequests: (lecturerId?: number) =>
-      request(`/thesis/faculty/advising-requests${lecturerId ? `?lecturerId=${lecturerId}` : ''}`),
+      request<{ success: boolean } & FacultyAdvisorDashboard>(
+        `/thesis/faculty/advising-requests${lecturerId ? `?lecturerId=${lecturerId}` : ''}`
+      ),
     respondAdvisingRequest: (id: number | string, action: 'accept' | 'reject') =>
-      request(`/thesis/faculty/advising-requests/${id}`, { method: 'PUT', body: JSON.stringify({ action }) }),
+      request<{ success: boolean; message: string }>(
+        `/thesis/faculty/advising-requests/${id}`,
+        { method: 'PUT', body: JSON.stringify({ action }) }
+      ),
     registerTopic: (thesisTitle: string) =>
       request('/thesis/register-topic', { method: 'POST', body: JSON.stringify({ thesisTitle }) }),
     getMyProgress: (studentId?: number | string) =>
-      request(`/thesis/my-progress${studentId ? `?studentId=${studentId}` : ''}`),
+      request<{
+        success: boolean;
+        thesis: StudentThesisProgress | null;
+        advisor: StudentAdvisor | null;
+      }>(`/thesis/my-progress${studentId ? `?studentId=${studentId}` : ''}`),
     submitReport: (formData: FormData) =>
       request('/thesis/submit-report', { method: 'POST', body: formData }),
     submitTurnitin: (formData: FormData) =>

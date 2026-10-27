@@ -500,6 +500,7 @@ export const useAdminDashboard = () => {
     setFilterStatus,
     busyProfileId,
     issuedAccount,
+    setIssuedAccount,
     committeeForm,
     setCommitteeForm,
     committeeCandidate,

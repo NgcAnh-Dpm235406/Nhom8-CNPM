@@ -13,7 +13,12 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, user, onLogou
   const links: { tab: TabType; label: string }[] = user
     ? [
         { tab: 'home', label: 'Trang Chủ' },
-        ...(user.roleCode === 'STUDENT' ? [{ tab: 'student' as const, label: 'Dashboard Học Viên' }] : []),
+        ...(user.roleCode === 'STUDENT'
+          ? [
+              { tab: 'student' as const, label: 'Dashboard Học Viên' },
+              { tab: 'student-profile' as const, label: 'Thông tin cá nhân' }
+            ]
+          : []),
         ...(user.roleCode === 'LECTURER' ? [{ tab: 'faculty' as const, label: 'Cổng Giảng Viên' }] : []),
         ...(user.roleCode === 'ADMIN'
           ? [
