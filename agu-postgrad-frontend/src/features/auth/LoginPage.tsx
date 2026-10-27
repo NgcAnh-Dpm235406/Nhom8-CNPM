@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import type { TabType } from '../../types';
+import type { AuthUser, RoleCode } from '../../types';
 import { api } from '../../services/api';
 
 interface LoginPageProps {
-  onNavigate?: (tab: TabType) => void;
+  onAuthenticated: (token: string, user: AuthUser) => void;
+  onNavigateToRegister: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
+const isRoleCode = (value: unknown): value is RoleCode =>
+  value === 'STUDENT' || value === 'LECTURER' || value === 'ADMIN';
+
+export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, onNavigateToRegister }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,16 +26,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
       if (!result.success || !result.token) {
         throw new Error(result.message || 'Đăng nhập không thành công.');
       }
+      if (!isRoleCode(result.user?.roleCode)) {
+        throw new Error('Tài khoản trả về mã vai trò không hợp lệ. Vui lòng liên hệ quản trị viên.');
+      }
 
-      localStorage.setItem('agu_token', result.token);
-      localStorage.setItem('agu_user', JSON.stringify(result.user));
-
-      const destination: TabType = result.user?.roleCode === 'STUDENT'
-        ? 'student'
-        : result.user?.roleCode === 'LECTURER'
-          ? 'faculty'
-          : 'home';
-      onNavigate?.(destination);
+      onAuthenticated(result.token, result.user);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể đăng nhập. Vui lòng thử lại.');
     } finally {
@@ -93,18 +92,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
           </button>
         </form>
 
-        {onNavigate && (
-          <p className="mt-4 text-center text-xs text-slate-500">
-            Chưa có tài khoản?{' '}
-            <button
-              type="button"
-              onClick={() => onNavigate('register')}
-              className="font-semibold text-sky-600 hover:underline"
-            >
-              Đăng ký ngay
-            </button>
-          </p>
-        )}
+        <p className="mt-4 text-center text-xs text-slate-500">
+          Chưa có tài khoản?{' '}
+          <button
+            type="button"
+            onClick={onNavigateToRegister}
+            className="font-semibold text-sky-600 hover:underline"
+          >
+            Đăng ký ngay
+          </button>
+        </p>
       </div>
     </div>
   );

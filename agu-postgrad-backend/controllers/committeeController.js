@@ -46,15 +46,33 @@ exports.checkDefenseGatekeeper = async (req, res) => {
 // 2. Thành lập Hội đồng Bảo vệ Luận văn Thạc sĩ (POST /api/committee/create)
 // Yêu cầu chuẩn 5 Thầy/Cô có học vị Tiến sĩ trở lên
 exports.createCommittee = async (req, res) => {
+    let transaction;
+    let transactionComplete = false;
     try {
-        const { committeeName, defenseDate, defenseRoom, presidentId, reviewer1Id, reviewer2Id, secretaryId, memberId } = req.body;
+        const {
+            committeeName, defenseDate, defenseRoom, presidentId, reviewer1Id,
+            reviewer2Id, secretaryId, memberId, thesisId, defenseOrder = 1,
+            startTime = '08:00:00'
+        } = req.body;
 
         if (!committeeName || !defenseDate || !defenseRoom || !presidentId || !reviewer1Id || !reviewer2Id || !secretaryId || !memberId) {
             return res.status(400).json({ success: false, message: 'Hội đồng bắt buộc phải có đầy đủ 5 thành viên (Chủ tịch, PB1, PB2, Thư ký, Ủy viên)!' });
         }
+        if (new Set([presidentId, reviewer1Id, reviewer2Id, secretaryId, memberId].map(Number)).size !== 5) {
+            return res.status(400).json({ success: false, message: '5 thành viên hội đồng phải là 5 giảng viên khác nhau.' });
+        }
+        if (thesisId && (!Number.isSafeInteger(Number(thesisId)) || Number(thesisId) < 1)) {
+            return res.status(400).json({ success: false, message: 'Học viên/đề tài được chọn không hợp lệ.' });
+        }
+        if (!Number.isInteger(Number(defenseOrder)) || Number(defenseOrder) < 1 ||
+            !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(startTime)) {
+            return res.status(400).json({ success: false, message: 'Lượt bảo vệ hoặc giờ bảo vệ không hợp lệ.' });
+        }
 
         const pool = await poolPromise;
-        const result = await pool.request()
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        const result = await transaction.request()
             .input('name', sql.NVarChar, committeeName)
             .input('date', sql.Date, defenseDate)
             .input('room', sql.NVarChar, defenseRoom)
@@ -70,14 +88,71 @@ exports.createCommittee = async (req, res) => {
             `);
 
         const committeeId = result.recordset[0].committee_id;
-        await writeAuditLog(req.user?.user_id, 'CREATE_COMMITTEE', 'defense_committees', committeeId, null, req.body, req.ip);
+        let defenseScheduleId = null;
+        if (thesisId) {
+            const candidateResult = await transaction.request()
+                .input('thesisId', sql.BigInt, thesisId)
+                .query(`
+                    SELECT thesis_id
+                    FROM thesis_progress
+                    WHERE thesis_id = @thesisId
+                      AND NOT EXISTS (
+                        SELECT 1 FROM thesis_defense_schedules
+                        WHERE thesis_defense_schedules.thesis_id = thesis_progress.thesis_id
+                      )
+                `);
+            if (!candidateResult.recordset.length) {
+                await transaction.rollback();
+                transactionComplete = true;
+                return res.status(409).json({
+                    success: false,
+                    message: 'Đề tài không tồn tại hoặc học viên đã được xếp lịch bảo vệ.'
+                });
+            }
 
-        res.status(201).json({
+            const scheduleResult = await transaction.request()
+                .input('thesisId', sql.BigInt, thesisId)
+                .input('committeeId', sql.Int, committeeId)
+                .input('defenseOrder', sql.Int, defenseOrder)
+                .input('startTime', sql.VarChar(8), startTime.length === 5 ? `${startTime}:00` : startTime)
+                .query(`
+                    INSERT INTO thesis_defense_schedules (thesis_id, committee_id, defense_order, start_time, result)
+                    OUTPUT INSERTED.defense_schedule_id
+                    VALUES (@thesisId, @committeeId, @defenseOrder, CAST(@startTime AS TIME), N'Chưa bảo vệ')
+                `);
+            defenseScheduleId = scheduleResult.recordset[0].defense_schedule_id;
+            await transaction.request()
+                .input('thesisId', sql.BigInt, thesisId)
+                .query(`UPDATE thesis_progress SET current_stage = N'Bảo vệ chính thức' WHERE thesis_id = @thesisId`);
+        }
+
+        await transaction.commit();
+        transactionComplete = true;
+        await writeAuditLog(req.user?.user_id, 'CREATE_COMMITTEE', 'defense_committees', committeeId, null, {
+            ...req.body,
+            defenseScheduleId
+        }, req.ip);
+
+        return res.status(201).json({
             success: true,
-            message: 'Thành lập Hội đồng bảo vệ luận văn Thạc sĩ thành công!',
-            committeeId
+            message: thesisId
+                ? 'Thành lập hội đồng và xếp lịch học viên thành công!'
+                : 'Thành lập Hội đồng bảo vệ luận văn Thạc sĩ thành công!',
+            committeeId,
+            defenseScheduleId
         });
     } catch (err) {
+        if (transaction && !transactionComplete) {
+            try { await transaction.rollback(); } catch (rollbackError) {
+                console.error('Không thể hoàn tác thành lập hội đồng:', rollbackError);
+            }
+        }
+        if (err.number === 2601 || err.number === 2627) {
+            return res.status(409).json({
+                success: false,
+                message: 'Học viên đã được xếp lịch bảo vệ ở một hội đồng khác.'
+            });
+        }
         res.status(500).json({ success: false, message: err.message });
     }
 };
@@ -115,6 +190,12 @@ exports.scheduleDefense = async (req, res) => {
             defenseScheduleId
         });
     } catch (err) {
+        if (err.number === 2601 || err.number === 2627) {
+            return res.status(409).json({
+                success: false,
+                message: 'Học viên đã được xếp lịch bảo vệ ở một hội đồng khác.'
+            });
+        }
         res.status(500).json({ success: false, message: err.message });
     }
 };
@@ -159,12 +240,22 @@ exports.getDefenseSchedules = async (req, res) => {
 exports.evaluateDefense = async (req, res) => {
     try {
         const { defenseScheduleId, lecturerId, roleInCommittee, contentScore, presentationScore, qaScore, feedback } = req.body;
+        const scheduleId = Number(defenseScheduleId);
+        const actualLecId = req.user.role_code === 'LECTURER' ? Number(req.user.lecturer_id) : Number(lecturerId);
+        const cScore = Number(contentScore);
+        const pScore = Number(presentationScore);
+        const qScore = Number(qaScore);
 
-        const cScore = parseFloat(contentScore);
-        const pScore = parseFloat(presentationScore);
-        const qScore = parseFloat(qaScore);
-
-        if (cScore < 0 || cScore > 5.0 || pScore < 0 || pScore > 2.5 || qScore < 0 || qScore > 2.5) {
+        if (!Number.isSafeInteger(scheduleId) || scheduleId < 1 ||
+            !Number.isSafeInteger(actualLecId) || actualLecId < 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu mã lịch bảo vệ hoặc mã giảng viên hợp lệ. Hãy tải lại danh sách hội đồng.'
+            });
+        }
+        if (!Number.isFinite(cScore) || cScore < 0 || cScore > 5.0 ||
+            !Number.isFinite(pScore) || pScore < 0 || pScore > 2.5 ||
+            !Number.isFinite(qScore) || qScore < 0 || qScore > 2.5) {
             return res.status(400).json({
                 success: false,
                 message: 'Điểm không hợp lệ! Chuẩn AGU: Nội dung [0-5.0], Trình bày [0-2.5], Trả lời câu hỏi [0-2.5].'
@@ -172,12 +263,34 @@ exports.evaluateDefense = async (req, res) => {
         }
 
         const pool = await poolPromise;
-        const actualLecId = req.user.role_code === 'LECTURER' ? req.user.lecturer_id : lecturerId;
+        const committeeResult = await pool.request()
+            .input('schedId', sql.BigInt, scheduleId)
+            .query(`
+                SELECT c.president_id, c.reviewer_1_id, c.reviewer_2_id, c.secretary_id, c.member_id
+                FROM thesis_defense_schedules ds
+                JOIN defense_committees c ON c.committee_id = ds.committee_id
+                WHERE ds.defense_schedule_id = @schedId
+            `);
+        if (!committeeResult.recordset.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy lịch bảo vệ.' });
+        }
+        const committee = committeeResult.recordset[0];
+        const roleByColumn = [
+            ['president_id', 'Chủ tịch'],
+            ['reviewer_1_id', 'Phản biện 1'],
+            ['reviewer_2_id', 'Phản biện 2'],
+            ['secretary_id', 'Thư ký'],
+            ['member_id', 'Ủy viên']
+        ];
+        const assignedRole = roleByColumn.find(([column]) => Number(committee[column]) === actualLecId)?.[1];
+        if (!assignedRole) {
+            return res.status(403).json({ success: false, message: 'Giảng viên không thuộc hội đồng của lịch bảo vệ này.' });
+        }
 
         await pool.request()
-            .input('schedId', sql.BigInt, defenseScheduleId)
+            .input('schedId', sql.BigInt, scheduleId)
             .input('lecId', sql.Int, actualLecId)
-            .input('role', sql.NVarChar, roleInCommittee)
+            .input('role', sql.NVarChar, assignedRole)
             .input('cScore', sql.Decimal(4, 2), cScore)
             .input('pScore', sql.Decimal(4, 2), pScore)
             .input('qScore', sql.Decimal(4, 2), qScore)
@@ -196,12 +309,12 @@ exports.evaluateDefense = async (req, res) => {
 
         // Tự động kích hoạt Stored Procedure tính điểm trung bình nếu đủ người chấm
         const calcRequest = pool.request();
-        calcRequest.input('p_defense_schedule_id', sql.BigInt, defenseScheduleId);
+        calcRequest.input('p_defense_schedule_id', sql.BigInt, scheduleId);
         await calcRequest.execute('sp_calculate_defense_final_grade');
 
         // Lấy lại kết quả sau khi SP tính
         const updatedRes = await pool.request()
-            .input('schedId', sql.BigInt, defenseScheduleId)
+            .input('schedId', sql.BigInt, scheduleId)
             .query(`SELECT average_score, result FROM thesis_defense_schedules WHERE defense_schedule_id = @schedId`);
 
         res.json({
@@ -237,4 +350,3 @@ exports.triggerCalculateGrade = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-

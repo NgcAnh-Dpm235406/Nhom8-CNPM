@@ -15,7 +15,7 @@ exports.login = async (req, res) => {
             .input('loginIdentifier', sql.VarChar, username.trim())
             .query(`
                 SELECT u.user_id, u.username, u.password_hash, u.email, u.status,
-                       r.role_id, r.role_code, r.role_name
+                       u.role_id, r.role_code, r.role_name
                 FROM users u
                 JOIN roles r ON u.role_id = r.role_id
                 WHERE u.username = @loginIdentifier OR u.email = @loginIdentifier
@@ -94,6 +94,7 @@ exports.login = async (req, res) => {
             token,
             user: {
                 userId: user.user_id,
+                roleId: user.role_id,
                 username: user.username,
                 email: user.email,
                 roleCode: user.role_code,
@@ -207,4 +208,3 @@ exports.markNotificationRead = async (req, res) => {
         return res.status(500).json({ success: false, message: err.message });
     }
 };
-

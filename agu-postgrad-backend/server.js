@@ -37,6 +37,7 @@ const studentRoutes = require('./routes/studentRoutes');
 const thesisRoutes = require('./routes/thesisRoutes');
 const committeeRoutes = require('./routes/committeeRoutes');
 const surveyRoutes = require('./routes/surveyRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admission', admissionRoutes);
@@ -45,6 +46,7 @@ app.use('/api/students', studentRoutes);
 app.use('/api/thesis', thesisRoutes);
 app.use('/api/committee', committeeRoutes);
 app.use('/api/surveys', surveyRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health-check endpoint
 app.get('/api/health', (req, res) => {
@@ -62,6 +64,22 @@ const { initDeadlineReminderCron } = require('./jobs/deadlineReminder');
 
 initSocketHandler(io);
 initDeadlineReminderCron();
+
+// Phục vụ giao diện frontend
+const frontendDistPath = path.join(__dirname, '../agu-postgrad-frontend/dist');
+app.use(express.static(frontendDistPath));
+
+app.get('/{*path}', (req, res, next) => {
+    if (
+        req.path === '/api' ||
+        req.path.startsWith('/api/') ||
+        req.path.startsWith('/uploads/')
+    ) {
+        return next();
+    }
+
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
 
 // 6. Middleware xử lý lỗi tập trung
 app.use((err, req, res, next) => {
