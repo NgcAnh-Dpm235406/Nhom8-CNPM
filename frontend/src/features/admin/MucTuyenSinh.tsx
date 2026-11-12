@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { AdminDashboardModel, ReviewStatus } from './useAdminDashboard';
+import type { AdminDashboardModel, ReviewStatus } from './useDuLieuQuanTri';
 
 export const AdmissionsSection = ({ dashboard }: { dashboard: AdminDashboardModel }) => {
   const {

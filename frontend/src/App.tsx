@@ -10,7 +10,7 @@ import { ResultLookupPage } from './features/lookup/ResultLookupPage';
 import { StudentDashboard } from './features/student/StudentDashboard';
 import { StudentProfilePage } from './features/student/StudentProfilePage';
 import { FacultyDashboard } from './features/faculty/FacultyDashboard';
-import { AdminDashboard } from './features/admin/AdminDashboard';
+import { AdminDashboard } from './features/admin/BangDieuKhienQuanTri';
 
 interface AuthSession {
   token: string;

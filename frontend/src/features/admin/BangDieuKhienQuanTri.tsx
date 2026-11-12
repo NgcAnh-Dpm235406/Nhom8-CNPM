@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { useState } from 'react';
 import { Check, CheckCircle2, Clipboard, X } from 'lucide-react';
-import { AdmissionsSection } from './AdmissionsSection';
-import { CommitteesSection } from './CommitteesSection';
-import { LecturersSection } from './LecturersSection';
-import { useAdminDashboard } from './useAdminDashboard';
+import { AdmissionsSection } from './MucTuyenSinh';
+import { CommitteesSection } from './MucHoiDong';
+import { LecturersSection } from './MucGiangVien';
+import { useAdminDashboard } from './useDuLieuQuanTri';
 import type { AdminSection } from '../../types';
 
 export const AdminDashboard = ({ section }: { section: AdminSection }) => {

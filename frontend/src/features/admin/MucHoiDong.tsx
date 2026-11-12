@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { AdminDashboardModel } from './useAdminDashboard';
+import type { AdminDashboardModel } from './useDuLieuQuanTri';
 
 export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardModel }) => {
   const {

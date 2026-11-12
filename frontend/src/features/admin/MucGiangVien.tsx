@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Lecturer, LecturerStudent } from '../../types';
 import { api } from '../../services/api';
-import type { AdminDashboardModel } from './useAdminDashboard';
+import type { AdminDashboardModel } from './useDuLieuQuanTri';
 
 export const LecturersSection = ({ dashboard }: { dashboard: AdminDashboardModel }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
