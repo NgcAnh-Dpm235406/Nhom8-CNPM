@@ -11,10 +11,11 @@ router.get('/gatekeeper-check/:studentId', verifyToken, committeeController.chec
 router.post('/create', verifyToken, requireRoles('ADMIN'), committeeController.createCommittee);
 router.post('/schedule', verifyToken, requireRoles('ADMIN'), committeeController.scheduleDefense);
 router.get('/schedules', verifyToken, committeeController.getDefenseSchedules);
+router.put('/:id', verifyToken, requireRoles('ADMIN'), committeeController.updateCommittee);
+router.delete('/:id', verifyToken, requireRoles('ADMIN'), committeeController.deleteCommittee);
 
 // Chấm điểm
 router.post('/evaluate', verifyToken, requireRoles('LECTURER', 'ADMIN'), committeeController.evaluateDefense);
 router.post('/calculate-grade/:scheduleId', verifyToken, requireRoles('ADMIN'), committeeController.triggerCalculateGrade);
 
 module.exports = router;
-

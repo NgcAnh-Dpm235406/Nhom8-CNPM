@@ -15,8 +15,8 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
 
   useEffect(() => {
     if (!notice) return;
-    const timeoutId = window.setTimeout(() => setNotice(''), 5000);
-    return () => window.clearTimeout(timeoutId);
+    window.alert(notice);
+    setNotice('');
   }, [notice, setNotice]);
 
   const sectionTitle = section === 'admissions'
@@ -66,26 +66,6 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
         <div className="space-y-2" aria-live="polite">
           {loadError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}</p>}
           {actionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{actionError}</p>}
-        </div>
-      )}
-
-      {notice && (
-        <div className="fixed right-4 top-4 z-50 w-[calc(100%-2rem)] max-w-md sm:right-6 sm:top-6" aria-live="polite">
-          <div
-            role="status"
-            className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 shadow-lg"
-          >
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
-            <p className="flex-1">{notice}</p>
-            <button
-              type="button"
-              onClick={() => setNotice('')}
-              className="rounded p-1 text-emerald-700 hover:bg-emerald-100"
-              aria-label="Đóng thông báo"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
         </div>
       )}
 

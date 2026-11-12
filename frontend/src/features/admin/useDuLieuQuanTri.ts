@@ -13,6 +13,16 @@ export type ReviewStatus = 'Đạt yêu cầu' | 'Cần bổ sung' | 'Không đ�
 type CommitteeRole = 'presidentId' | 'reviewer1Id' | 'reviewer2Id' | 'secretaryId' | 'memberId';
 type EvaluationRole = 'president' | 'reviewer1' | 'reviewer2' | 'secretary' | 'member';
 type ScoreDraft = { contentScore: string; presentationScore: string; qaScore: string; feedback: string };
+type CommitteeScheduleDraft = {
+  scheduleId: number;
+  thesisId: number;
+  defenseOrder: number;
+  startTime: string;
+  evaluationCount: number;
+  studentName: string | null;
+  studentCode: string | null;
+  thesisTitle: string | null;
+};
 
 const evaluationRoles: {
   key: EvaluationRole;
@@ -140,6 +150,9 @@ export const useAdminDashboard = () => {
   });
   const [isCreatingCommittee, setIsCreatingCommittee] = useState(false);
   const [showCommitteeForm, setShowCommitteeForm] = useState(false);
+  const [editingCommitteeId, setEditingCommitteeId] = useState<number | null>(null);
+  const [isAddingSchedule, setIsAddingSchedule] = useState(false);
+  const [committeeScheduleDrafts, setCommitteeScheduleDrafts] = useState<CommitteeScheduleDraft[]>([]);
 
   const filteredProfiles = useMemo(
     () => filterStatus === 'Tất cả' ? profiles : profiles.filter(profile => profile.status === filterStatus),
@@ -347,6 +360,155 @@ export const useAdminDashboard = () => {
     }
   };
 
+  // Mở form ở chế độ Sửa hội đồng
+  const handleStartEditCommittee = (committee: AdminCommitteeRecord, schedules: AdminCommitteeRecord[]) => {
+    setEditingCommitteeId(committee.committee_id);
+    setCommitteeForm({
+      committeeName: committee.committee_name,
+      defenseDate: committee.defense_date.slice(0, 10),
+      defenseRoom: committee.defense_room
+    });
+    setCommitteeMembers({
+      presidentId: String(committee.president_id || ''),
+      reviewer1Id: String(committee.reviewer_1_id || ''),
+      reviewer2Id: String(committee.reviewer_2_id || ''),
+      secretaryId: String(committee.secretary_id || ''),
+      memberId: String(committee.member_id || '')
+    });
+    setCommitteeScheduleDrafts(schedules.flatMap(schedule => {
+      if (schedule.defense_schedule_id === null || schedule.thesis_id === null) return [];
+      return [{
+        scheduleId: schedule.defense_schedule_id,
+        thesisId: schedule.thesis_id,
+        defenseOrder: schedule.defense_order ?? 1,
+        startTime: formatTime(schedule.start_time),
+        evaluationCount: schedule.evaluation_count,
+        studentName: schedule.student_name,
+        studentCode: schedule.student_code,
+        thesisTitle: schedule.thesis_title
+      }];
+    }));
+    setCommitteeCandidate('');
+    setActionError('');
+    setNotice('');
+    setShowCommitteeForm(true);
+  };
+
+  // Đóng form & reset trạng thái
+  const handleCloseCommitteeForm = () => {
+    setShowCommitteeForm(false);
+    setEditingCommitteeId(null);
+    setCommitteeScheduleDrafts([]);
+    setCommitteeForm({ committeeName: '', defenseDate: '', defenseRoom: '' });
+    setCommitteeCandidate('');
+    setCommitteeDefenseOrder(1);
+    setCommitteeStartTime('08:00');
+    setCommitteeMembers({
+      presidentId: '',
+      reviewer1Id: '',
+      reviewer2Id: '',
+      secretaryId: '',
+      memberId: ''
+    });
+  };
+
+  // Lưu hội đồng (Dùng chung cho cả Tạo mới & Cập nhật)
+  const handleSaveCommittee = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setActionError('');
+    setNotice('');
+
+    const memberIds = committeeRoles.map(role => committeeMembers[role.field]);
+    if (memberIds.some(id => !id) || new Set(memberIds).size !== committeeRoles.length) {
+      setActionError('Vui lòng chọn đủ 5 giảng viên khác nhau cho hội đồng.');
+      return;
+    }
+
+    setIsCreatingCommittee(true);
+    try {
+      const basePayload = {
+        ...committeeForm,
+        presidentId: Number(committeeMembers.presidentId),
+        reviewer1Id: Number(committeeMembers.reviewer1Id),
+        reviewer2Id: Number(committeeMembers.reviewer2Id),
+        secretaryId: Number(committeeMembers.secretaryId),
+        memberId: Number(committeeMembers.memberId)
+      };
+
+      if (editingCommitteeId !== null) {
+        const result = await api.committee.updateCommittee(editingCommitteeId, {
+          ...basePayload,
+          schedules: committeeScheduleDrafts.map(({ scheduleId, thesisId, defenseOrder, startTime }) => ({
+            scheduleId,
+            thesisId,
+            defenseOrder,
+            startTime
+          }))
+        });
+        if (!result.success) throw new Error(result.message || 'Không thể cập nhật hội đồng.');
+        setNotice(result.message || 'Đã cập nhật thông tin hội đồng.');
+      } else {
+        // Gọi API tạo mới hội đồng
+        const result = await api.committee.createCommittee({
+          ...basePayload,
+          ...(committeeCandidate
+            ? {
+                thesisId: Number(committeeCandidate),
+                defenseOrder: committeeDefenseOrder,
+                startTime: committeeStartTime
+              }
+            : {})
+        });
+        if (!result.success) throw new Error(result.message || 'Không thể thành lập hội đồng.');
+        setNotice(`${result.message} (Mã hội đồng: ${result.committeeId})`);
+      }
+
+      handleCloseCommitteeForm();
+      await loadData();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Không thể lưu thông tin hội đồng.');
+    } finally {
+      setIsCreatingCommittee(false);
+    }
+  };
+
+  // Xóa hội đồng
+  const handleDeleteCommittee = async (committee: AdminCommitteeRecord) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${committee.committee_name}" không?`)) return;
+    setActionError('');
+    setNotice('');
+    try {
+      const result = await api.committee.deleteCommittee(committee.committee_id);
+      if (!result.success) throw new Error(result.message || 'Không thể xóa hội đồng.');
+      setNotice(result.message || 'Đã xóa hội đồng.');
+      await loadData();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Không thể xóa hội đồng.');
+    }
+  };
+
+  // Thêm học viên vào hội đồng đã có
+  const handleAddStudentToCommittee = async (
+    committeeId: number,
+    payload: { thesisId: number; defenseOrder: number; startTime: string }
+  ) => {
+    setActionError('');
+    setNotice('');
+    setIsAddingSchedule(true);
+    try {
+      const result = await api.committee.addSchedule(committeeId, payload);
+      if (!result.success) throw new Error(result.message || 'Không thể xếp lịch cho học viên.');
+      setNotice(result.message || 'Đã thêm học viên vào hội đồng.');
+      await loadData();
+      return true;
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Không thể xếp lịch cho học viên.');
+      return false;
+    } finally {
+      setIsAddingSchedule(false);
+    }
+  };
+
   const toggleScoreForm = async (scheduleId: number, committee: AdminCommitteeRecord) => {
     setActionError('');
     setScoreFormError('');
@@ -516,6 +678,8 @@ export const useAdminDashboard = () => {
     scoreFormError,
     committeeMembers,
     setCommitteeMembers,
+    committeeScheduleDrafts,
+    setCommitteeScheduleDrafts,
     isCreatingCommittee,
     showCommitteeForm,
     setShowCommitteeForm,
@@ -529,6 +693,13 @@ export const useAdminDashboard = () => {
     handleSaveLecturer,
     handleDeleteLecturer,
     handleCreateCommittee,
+    editingCommitteeId,
+    isAddingSchedule,
+    handleStartEditCommittee,
+    handleCloseCommitteeForm,
+    handleSaveCommittee,
+    handleDeleteCommittee,
+    handleAddStudentToCommittee,
     toggleScoreForm,
     handleSaveScores,
     formatDate,

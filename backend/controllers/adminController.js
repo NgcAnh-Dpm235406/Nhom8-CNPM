@@ -125,7 +125,7 @@ exports.getCommittees = async (req, res) => {
                    reviewer2.full_name AS reviewer2_name,
                    secretary.full_name AS secretary_name,
                    member.full_name AS member_name,
-                   ds.defense_schedule_id, ds.defense_order, ds.start_time,
+                   ds.defense_schedule_id, ds.thesis_id, ds.defense_order, ds.start_time,
                    ds.average_score, ds.result AS defense_result,
                    ISNULL(evaluation_counts.evaluation_count, 0) AS evaluation_count,
                    tp.thesis_title, s.student_code, p.full_name AS student_name

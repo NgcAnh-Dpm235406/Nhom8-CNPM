@@ -149,6 +149,7 @@ export interface AdminCommitteeRecord {
   secretary_name: string;
   member_name: string;
   defense_schedule_id: number | null;
+  thesis_id: number | null;
   defense_order: number | null;
   start_time: string | null;
   average_score: number | null;

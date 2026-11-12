@@ -115,11 +115,12 @@ export const AdmissionsSection = ({ dashboard }: { dashboard: AdminDashboardMode
               onChange={event => setFilterStatus(event.target.value)}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 focus:border-sky-500 focus:outline-none"
             >
-              <option>Tất cả trạng thái</option>
-              <option>Chờ xét duyệt</option>
-              <option>Đạt yêu cầu</option>
-              <option>Cần bổ sung</option>
-              <option>Không đạt</option>
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="Chờ xét duyệt">Chờ xét duyệt</option>
+              <option value="Đạt yêu cầu">Đạt yêu cầu</option>
+              <option value="Cần bổ sung">Cần bổ sung</option>
+              <option value="Không đạt">Không đạt</option>
+              <option value="Đã nhập học">Đã nhập học</option>
             </select>
           </div>
         </div>

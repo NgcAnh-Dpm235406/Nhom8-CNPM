@@ -157,6 +157,342 @@ exports.createCommittee = async (req, res) => {
     }
 };
 
+function parseCommitteeInput(body) {
+    const {
+        committeeName,
+        defenseDate,
+        defenseRoom,
+        presidentId,
+        reviewer1Id,
+        reviewer2Id,
+        secretaryId,
+        memberId
+    } = body || {};
+    const lecturerIds = [presidentId, reviewer1Id, reviewer2Id, secretaryId, memberId].map(Number);
+    const date = typeof defenseDate === 'string' ? defenseDate : '';
+    const parsedDate = new Date(`${date}T00:00:00.000Z`);
+
+    if (
+        typeof committeeName !== 'string' ||
+        !committeeName.trim() ||
+        committeeName.trim().length > 150 ||
+        typeof defenseRoom !== 'string' ||
+        !defenseRoom.trim() ||
+        defenseRoom.trim().length > 100 ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        Number.isNaN(parsedDate.getTime()) ||
+        parsedDate.toISOString().slice(0, 10) !== date ||
+        lecturerIds.some(id => !Number.isSafeInteger(id) || id < 1) ||
+        new Set(lecturerIds).size !== lecturerIds.length
+    ) {
+        return null;
+    }
+
+    return {
+        committeeName: committeeName.trim(),
+        defenseDate: date,
+        defenseRoom: defenseRoom.trim(),
+        lecturerIds
+    };
+}
+
+function parseCommitteeId(value) {
+    const committeeId = Number(value);
+    return Number.isSafeInteger(committeeId) && committeeId > 0 ? committeeId : null;
+}
+
+exports.updateCommittee = async (req, res) => {
+    const committeeId = parseCommitteeId(req.params.id);
+    const input = parseCommitteeInput(req.body);
+    const schedules = req.body?.schedules;
+    if (!committeeId) {
+        return res.status(400).json({ success: false, message: 'Mã hội đồng không hợp lệ.' });
+    }
+    if (!input) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thông tin hội đồng không hợp lệ. Hãy kiểm tra tên, ngày, phòng và 5 giảng viên khác nhau.'
+        });
+    }
+    if (!Array.isArray(schedules)) {
+        return res.status(400).json({ success: false, message: 'Thiếu danh sách lịch bảo vệ cần cập nhật.' });
+    }
+
+    const normalizedSchedules = schedules.map(schedule => ({
+        scheduleId: Number(schedule?.scheduleId),
+        thesisId: Number(schedule?.thesisId),
+        defenseOrder: Number(schedule?.defenseOrder),
+        startTime: schedule?.startTime
+    }));
+    if (
+        normalizedSchedules.some(schedule =>
+            !Number.isSafeInteger(schedule.scheduleId) || schedule.scheduleId < 1 ||
+            !Number.isSafeInteger(schedule.thesisId) || schedule.thesisId < 1 ||
+            !Number.isSafeInteger(schedule.defenseOrder) || schedule.defenseOrder < 1 ||
+            typeof schedule.startTime !== 'string' ||
+            !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(schedule.startTime)
+        ) ||
+        new Set(normalizedSchedules.map(schedule => schedule.scheduleId)).size !== normalizedSchedules.length ||
+        new Set(normalizedSchedules.map(schedule => schedule.thesisId)).size !== normalizedSchedules.length
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thông tin học viên, lượt hoặc giờ bảo vệ không hợp lệ.'
+        });
+    }
+
+    let transaction;
+    let transactionComplete = false;
+    try {
+        const pool = await poolPromise;
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        const currentResult = await transaction.request()
+            .input('committeeId', sql.Int, committeeId)
+            .query(`
+                SELECT committee_name, defense_date, defense_room, president_id,
+                       reviewer_1_id, reviewer_2_id, secretary_id, member_id
+                FROM defense_committees WITH (UPDLOCK, HOLDLOCK)
+                WHERE committee_id = @committeeId
+            `);
+        if (!currentResult.recordset.length) {
+            await transaction.rollback();
+            transactionComplete = true;
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hội đồng.' });
+        }
+
+        const existingSchedules = await transaction.request()
+            .input('committeeId', sql.Int, committeeId)
+            .query(`
+                SELECT ds.defense_schedule_id, ds.thesis_id, ds.defense_order, ds.start_time,
+                       COUNT(e.evaluation_id) AS evaluation_count
+                FROM thesis_defense_schedules ds WITH (UPDLOCK, HOLDLOCK)
+                LEFT JOIN defense_evaluations e ON e.defense_schedule_id = ds.defense_schedule_id
+                WHERE ds.committee_id = @committeeId
+                GROUP BY ds.defense_schedule_id, ds.thesis_id, ds.defense_order, ds.start_time
+            `);
+        const existingById = new Map(
+            existingSchedules.recordset.map(schedule => [Number(schedule.defense_schedule_id), schedule])
+        );
+        if (
+            normalizedSchedules.length !== existingById.size ||
+            normalizedSchedules.some(schedule => !existingById.has(schedule.scheduleId))
+        ) {
+            await transaction.rollback();
+            transactionComplete = true;
+            return res.status(409).json({
+                success: false,
+                message: 'Danh sách lịch bảo vệ đã thay đổi. Hãy tải lại trang rồi thử lại.'
+            });
+        }
+
+        const hasEvaluations = [...existingById.values()]
+            .some(schedule => Number(schedule.evaluation_count) > 0);
+        const currentMemberIds = [
+            Number(currentResult.recordset[0].president_id),
+            Number(currentResult.recordset[0].reviewer_1_id),
+            Number(currentResult.recordset[0].reviewer_2_id),
+            Number(currentResult.recordset[0].secretary_id),
+            Number(currentResult.recordset[0].member_id)
+        ];
+        if (hasEvaluations && currentMemberIds.some((id, index) => id !== input.lecturerIds[index])) {
+            await transaction.rollback();
+            transactionComplete = true;
+            return res.status(409).json({
+                success: false,
+                message: 'Không thể thay đổi thành viên hội đồng khi đã có phiếu chấm điểm.'
+            });
+        }
+
+        for (const schedule of normalizedSchedules) {
+            const existing = existingById.get(schedule.scheduleId);
+            if (Number(existing.thesis_id) !== schedule.thesisId) {
+                if (Number(existing.evaluation_count) > 0) {
+                    await transaction.rollback();
+                    transactionComplete = true;
+                    return res.status(409).json({
+                        success: false,
+                        message: 'Không thể đổi học viên của lịch đã có phiếu chấm điểm.'
+                    });
+                }
+
+                const candidate = await transaction.request()
+                    .input('thesisId', sql.BigInt, schedule.thesisId)
+                    .input('committeeId', sql.Int, committeeId)
+                    .query(`
+                        SELECT thesis_id
+                        FROM thesis_progress
+                        WHERE thesis_id = @thesisId
+                          AND NOT EXISTS (
+                            SELECT 1
+                            FROM thesis_defense_schedules
+                            WHERE thesis_id = @thesisId
+                          )
+                    `);
+                if (!candidate.recordset.length) {
+                    await transaction.rollback();
+                    transactionComplete = true;
+                    return res.status(409).json({
+                        success: false,
+                        message: 'Học viên được chọn không tồn tại hoặc đã được xếp lịch ở hội đồng khác.'
+                    });
+                }
+
+                await transaction.request()
+                    .input('thesisId', sql.BigInt, schedule.thesisId)
+                    .query(`
+                        UPDATE thesis_progress
+                        SET current_stage = N'Bảo vệ chính thức'
+                        WHERE thesis_id = @thesisId
+                    `);
+            }
+        }
+
+        const [presidentId, reviewer1Id, reviewer2Id, secretaryId, memberId] = input.lecturerIds;
+        const result = await transaction.request()
+            .input('committeeId', sql.Int, committeeId)
+            .input('name', sql.NVarChar(150), input.committeeName)
+            .input('date', sql.Date, input.defenseDate)
+            .input('room', sql.NVarChar(100), input.defenseRoom)
+            .input('presidentId', sql.Int, presidentId)
+            .input('reviewer1Id', sql.Int, reviewer1Id)
+            .input('reviewer2Id', sql.Int, reviewer2Id)
+            .input('secretaryId', sql.Int, secretaryId)
+            .input('memberId', sql.Int, memberId)
+            .query(`
+                UPDATE defense_committees
+                SET committee_name = @name,
+                    defense_date = @date,
+                    defense_room = @room,
+                    president_id = @presidentId,
+                    reviewer_1_id = @reviewer1Id,
+                    reviewer_2_id = @reviewer2Id,
+                    secretary_id = @secretaryId,
+                    member_id = @memberId
+                OUTPUT INSERTED.committee_id
+                WHERE committee_id = @committeeId
+            `);
+        if (!result.recordset.length) {
+            await transaction.rollback();
+            transactionComplete = true;
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hội đồng.' });
+        }
+
+        for (const schedule of normalizedSchedules) {
+            await transaction.request()
+                .input('scheduleId', sql.BigInt, schedule.scheduleId)
+                .input('committeeId', sql.Int, committeeId)
+                .input('thesisId', sql.BigInt, schedule.thesisId)
+                .input('defenseOrder', sql.Int, schedule.defenseOrder)
+                .input('startTime', sql.VarChar(8), schedule.startTime.length === 5
+                    ? `${schedule.startTime}:00`
+                    : schedule.startTime)
+                .query(`
+                    UPDATE thesis_defense_schedules
+                    SET thesis_id = @thesisId,
+                        defense_order = @defenseOrder,
+                        start_time = CAST(@startTime AS TIME)
+                    WHERE defense_schedule_id = @scheduleId
+                      AND committee_id = @committeeId
+                `);
+        }
+
+        await transaction.commit();
+        transactionComplete = true;
+        await writeAuditLog(
+            req.user?.user_id,
+            'UPDATE_COMMITTEE',
+            'defense_committees',
+            committeeId,
+            {
+                ...currentResult.recordset[0],
+                schedules: existingSchedules.recordset
+            },
+            { ...input, schedules: normalizedSchedules },
+            req.ip
+        );
+        return res.json({ success: true, message: 'Đã cập nhật toàn bộ thông tin hội đồng và lịch bảo vệ.' });
+    } catch (err) {
+        if (transaction && !transactionComplete) {
+            try {
+                await transaction.rollback();
+            } catch (rollbackError) {
+                console.error('Không thể hoàn tác cập nhật hội đồng:', rollbackError);
+            }
+        }
+        if (err.number === 2601 || err.number === 2627) {
+            return res.status(409).json({
+                success: false,
+                message: 'Học viên đã được xếp lịch bảo vệ ở một hội đồng khác.'
+            });
+        }
+        if (err.number === 547) {
+            return res.status(409).json({
+                success: false,
+                message: 'Không thể cập nhật hội đồng vì có giảng viên không còn hợp lệ.'
+            });
+        }
+        console.error('Lỗi cập nhật hội đồng:', err);
+        return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi cập nhật hội đồng.' });
+    }
+};
+
+exports.deleteCommittee = async (req, res) => {
+    const committeeId = parseCommitteeId(req.params.id);
+    if (!committeeId) {
+        return res.status(400).json({ success: false, message: 'Mã hội đồng không hợp lệ.' });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('committeeId', sql.Int, committeeId)
+            .query(`
+                DELETE FROM defense_committees
+                OUTPUT DELETED.committee_id, DELETED.committee_name
+                WHERE committee_id = @committeeId
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM thesis_defense_schedules
+                    WHERE committee_id = @committeeId
+                  )
+            `);
+        if (!result.recordset.length) {
+            const existing = await pool.request()
+                .input('committeeId', sql.Int, committeeId)
+                .query(`SELECT committee_id FROM defense_committees WHERE committee_id = @committeeId`);
+            if (!existing.recordset.length) {
+                return res.status(404).json({ success: false, message: 'Không tìm thấy hội đồng.' });
+            }
+            return res.status(409).json({
+                success: false,
+                message: 'Không thể xóa hội đồng đã có lịch bảo vệ.'
+            });
+        }
+
+        await writeAuditLog(
+            req.user?.user_id,
+            'DELETE_COMMITTEE',
+            'defense_committees',
+            committeeId,
+            result.recordset[0],
+            null,
+            req.ip
+        );
+        return res.json({ success: true, message: 'Đã xóa hội đồng.' });
+    } catch (err) {
+        if (err.number === 547) {
+            return res.status(409).json({
+                success: false,
+                message: 'Không thể xóa hội đồng đang được lịch bảo vệ sử dụng.'
+            });
+        }
+        console.error('Lỗi xóa hội đồng:', err);
+        return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xóa hội đồng.' });
+    }
+};
+
 // 3. Xếp lịch bảo vệ cho học viên (POST /api/committee/schedule)
 exports.scheduleDefense = async (req, res) => {
     try {

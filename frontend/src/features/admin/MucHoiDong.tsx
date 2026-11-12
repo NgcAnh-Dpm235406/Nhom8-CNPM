@@ -7,6 +7,7 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
     setShowCommitteeForm,
     setActionError,
     setNotice,
+    actionError,
     lecturers,
     isLoading,
     committeeForm,
@@ -21,8 +22,16 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
     committeeRoles,
     committeeMembers,
     setCommitteeMembers,
+    committeeScheduleDrafts,
+    setCommitteeScheduleDrafts,
     isCreatingCommittee,
-    handleCreateCommittee,
+    handleSaveCommittee,
+    handleCloseCommitteeForm,
+    editingCommitteeId,
+    handleStartEditCommittee,
+    handleDeleteCommittee,
+    handleAddStudentToCommittee,
+    isAddingSchedule,
     committees,
     formatDate,
     formatTime,
@@ -40,16 +49,38 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
   // --- State cho Tìm kiếm và Lọc ---
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'has_students', 'empty'
+  const [scheduleCommitteeId, setScheduleCommitteeId] = useState<number | null>(null);
+  const [scheduleCandidate, setScheduleCandidate] = useState('');
+  const [scheduleOrder, setScheduleOrder] = useState(1);
+  const [scheduleTime, setScheduleTime] = useState('08:00');
+
+  const submitSchedule = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (scheduleCommitteeId === null || !scheduleCandidate) {
+      setActionError('Vui lòng chọn học viên cần xếp lịch.');
+      return;
+    }
+
+    const saved = await handleAddStudentToCommittee(scheduleCommitteeId, {
+      thesisId: Number(scheduleCandidate),
+      defenseOrder: scheduleOrder,
+      startTime: scheduleTime
+    });
+
+    if (saved) {
+      setScheduleCommitteeId(null);
+      setScheduleCandidate('');
+      setScheduleOrder(1);
+      setScheduleTime('08:00');
+    }
+  };
 
   // --- Thống kê & Lọc dữ liệu ---
   const { filteredCommittees, stats } = useMemo(() => {
-    let totalStudents = 0;
-    let scheduledCommittees = 0;
+    const totalStudents = committees.reduce((total, { schedules }) => total + schedules.length, 0);
+    const scheduledCommittees = committees.filter(({ schedules }) => schedules.length > 0).length;
 
     const filtered = committees.filter(({ committee, schedules }) => {
-      totalStudents += schedules.length;
-      if (schedules.length > 0) scheduledCommittees++;
-
       const matchesSearch = 
         committee.committee_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         committee.defense_room.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -74,8 +105,103 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
     };
   }, [committees, searchTerm, filterStatus]);
 
-  const handleExportExcel = () => {
-    alert("Tính năng xuất Excel đang được phát triển!");
+  const handleExportExcel = async () => {
+    if (filteredCommittees.length === 0) {
+      alert('Không có hội đồng nào phù hợp để xuất.');
+      return;
+    }
+
+    const headers = [
+      'STT',
+      'Mã hội đồng',
+      'Tên hội đồng',
+      'Ngày bảo vệ',
+      'Phòng bảo vệ',
+      'Chủ tịch',
+      'Phản biện 1',
+      'Phản biện 2',
+      'Thư ký',
+      'Ủy viên',
+      'Mã học viên',
+      'Họ tên học viên',
+      'Tên đề tài',
+      'Lượt bảo vệ',
+      'Giờ bảo vệ',
+      'Điểm trung bình',
+      'Kết quả',
+      'Số phiếu chấm'
+    ];
+
+    const rows = filteredCommittees.flatMap(({ committee, schedules }) => {
+      const entries = schedules.length > 0 ? schedules : [null];
+      return entries.map(schedule => [
+        null,
+        committee.committee_id,
+        committee.committee_name,
+        formatDate(committee.defense_date),
+        committee.defense_room,
+        committee.president_name,
+        committee.reviewer1_name,
+        committee.reviewer2_name,
+        committee.secretary_name,
+        committee.member_name,
+        schedule?.student_code ?? null,
+        schedule?.student_name ?? null,
+        schedule?.thesis_title ?? null,
+        schedule?.defense_order ?? null,
+        schedule?.start_time ? formatTime(schedule.start_time) : null,
+        schedule?.average_score ?? null,
+        schedule?.defense_result ?? null,
+        schedule?.evaluation_count ?? null
+      ]);
+    });
+
+    rows.forEach((row, index) => { row[0] = index + 1; });
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    try {
+      const { default: ExcelJS } = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'AGU PostGrad';
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet('Danh sách hội đồng', {
+        views: [{ state: 'frozen', ySplit: 1 }]
+      });
+      worksheet.columns = headers.map((header, index) => ({
+        header,
+        key: `column${index + 1}`,
+        width: [8, 14, 24, 16, 24, 24, 24, 24, 24, 24, 18, 24, 50, 14, 14, 18, 18, 16][index]
+      }));
+      worksheet.addRows(rows);
+      worksheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: rows.length + 1, column: headers.length }
+      };
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0369A1' }
+      };
+      worksheet.getRow(1).alignment = { vertical: 'middle', wrapText: true };
+      worksheet.getRow(1).height = 30;
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `danh-sach-hoi-dong-${dateStamp}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(`Không thể xuất tệp Excel: ${error instanceof Error ? error.message : 'Lỗi không xác định.'}`);
+    }
   };
 
   return (
@@ -101,6 +227,7 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
             <button
               type="button"
               onClick={() => {
+                handleCloseCommitteeForm();
                 setShowCommitteeForm(true);
                 setActionError('');
                 setNotice('');
@@ -162,12 +289,14 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
             <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl md:p-8">
               <div className="mb-6 flex items-start justify-between border-b border-slate-100 pb-4">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">Thành lập hội đồng bảo vệ</h2>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    {editingCommitteeId === null ? 'Thành lập hội đồng bảo vệ' : 'Chỉnh sửa hội đồng'}
+                  </h2>
                   <p className="mt-1 text-sm text-slate-600">Chọn đủ 5 giảng viên khác nhau theo từng chức danh trong hội đồng.</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowCommitteeForm(false)}
+                  onClick={handleCloseCommitteeForm}
                   className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
                   title="Đóng biểu mẫu"
                 >
@@ -177,13 +306,24 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                 </button>
               </div>
 
+              {actionError && (
+                <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                  {actionError}
+                </p>
+              )}
+              {editingCommitteeId !== null && committeeScheduleDrafts.some(schedule => schedule.evaluationCount > 0) && (
+                <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                  Hội đồng đã có phiếu chấm. Có thể sửa tên, ngày, phòng và giờ/lượt bảo vệ, nhưng không thể đổi giảng viên hoặc học viên đã được chấm.
+                </p>
+              )}
+
               {lecturers.length < 5 && !isLoading && (
                 <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                   Danh sách hiện có {lecturers.length} giảng viên; cần ít nhất 5 giảng viên để lập hội đồng.
                 </p>
               )}
 
-              <form onSubmit={handleCreateCommittee} className="space-y-5">
+              <form onSubmit={handleSaveCommittee} className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-1 text-sm font-medium text-slate-700">
                     Tên hội đồng
@@ -217,50 +357,54 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                       placeholder="Ví dụ: Phòng họp A"
                     />
                   </label>
-                  <label className="space-y-1 text-sm font-medium text-slate-700 md:col-span-2">
-                    Học viên / đề tài cần xếp lịch (không bắt buộc)
-                    <select
-                      value={committeeCandidate}
-                      onChange={event => setCommitteeCandidate(event.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
-                    >
-                      <option value="">Chỉ thành lập hội đồng, chưa xếp lịch học viên</option>
-                      {defenseCandidates.map(candidate => (
-                        <option key={candidate.thesis_id} value={candidate.thesis_id}>
-                          {candidate.student_name} ({candidate.student_code}) — {candidate.thesis_title}
-                        </option>
-                      ))}
-                    </select>
-                    {committeeCandidate && (
-                      <span className="block pt-2 text-xs font-normal text-slate-500">
-                        Lượt và giờ bảo vệ sẽ được lưu cùng hội đồng.
-                      </span>
-                    )}
-                  </label>
-                  {committeeCandidate && (
+                  {editingCommitteeId === null && (
                     <>
-                      <label className="space-y-1 text-sm font-medium text-slate-700">
-                        Lượt bảo vệ
-                        <input
-                          required
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={committeeDefenseOrder}
-                          onChange={event => setCommitteeDefenseOrder(Number(event.target.value))}
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
-                        />
+                      <label className="space-y-1 text-sm font-medium text-slate-700 md:col-span-2">
+                        Học viên / đề tài cần xếp lịch (không bắt buộc)
+                        <select
+                          value={committeeCandidate}
+                          onChange={event => setCommitteeCandidate(event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
+                        >
+                          <option value="">Chỉ thành lập hội đồng, chưa xếp lịch học viên</option>
+                          {defenseCandidates.map(candidate => (
+                            <option key={candidate.thesis_id} value={candidate.thesis_id}>
+                              {candidate.student_name} ({candidate.student_code}) — {candidate.thesis_title}
+                            </option>
+                          ))}
+                        </select>
+                        {committeeCandidate && (
+                          <span className="block pt-2 text-xs font-normal text-slate-500">
+                            Lượt và giờ bảo vệ sẽ được lưu cùng hội đồng.
+                          </span>
+                        )}
                       </label>
-                      <label className="space-y-1 text-sm font-medium text-slate-700">
-                        Giờ bảo vệ
-                        <input
-                          required
-                          type="time"
-                          value={committeeStartTime}
-                          onChange={event => setCommitteeStartTime(event.target.value)}
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
-                        />
-                      </label>
+                      {committeeCandidate && (
+                        <>
+                          <label className="space-y-1 text-sm font-medium text-slate-700">
+                            Lượt bảo vệ
+                            <input
+                              required
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={committeeDefenseOrder}
+                              onChange={event => setCommitteeDefenseOrder(Number(event.target.value))}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                            />
+                          </label>
+                          <label className="space-y-1 text-sm font-medium text-slate-700">
+                            Giờ bảo vệ
+                            <input
+                              required
+                              type="time"
+                              value={committeeStartTime}
+                              onChange={event => setCommitteeStartTime(event.target.value)}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                            />
+                          </label>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
@@ -273,7 +417,8 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                         required
                         value={committeeMembers[role.field]}
                         onChange={event => setCommitteeMembers(current => ({ ...current, [role.field]: event.target.value }))}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
+                        disabled={committeeScheduleDrafts.some(schedule => schedule.evaluationCount > 0)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 disabled:bg-slate-100"
                       >
                         <option value="">Chọn giảng viên</option>
                         {lecturers.map(lecturer => {
@@ -291,24 +436,194 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                   ))}
                 </div>
 
+                {editingCommitteeId !== null && committeeScheduleDrafts.length > 0 && (
+                  <section className="space-y-4 border-t border-slate-100 pt-5">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">Học viên và lịch bảo vệ</h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Có thể cập nhật học viên, lượt và giờ bảo vệ. Học viên đã có phiếu chấm sẽ được khóa để bảo toàn kết quả.
+                      </p>
+                    </div>
+                    {committeeScheduleDrafts.map((schedule, index) => {
+                      const currentCandidateIsAvailable = defenseCandidates.some(
+                        candidate => candidate.thesis_id === schedule.thesisId
+                      );
+                      return (
+                        <div key={schedule.scheduleId} className="grid gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3">
+                          <label className="space-y-1 text-sm font-medium text-slate-700 md:col-span-3">
+                            Học viên / đề tài — lịch {index + 1}
+                            <select
+                              value={schedule.thesisId}
+                              disabled={schedule.evaluationCount > 0}
+                              onChange={event => {
+                                const thesisId = Number(event.target.value);
+                                const candidate = defenseCandidates.find(item => item.thesis_id === thesisId);
+                                setCommitteeScheduleDrafts(current => current.map(item =>
+                                  item.scheduleId === schedule.scheduleId
+                                    ? {
+                                        ...item,
+                                        thesisId,
+                                        studentName: candidate?.student_name ?? item.studentName,
+                                        studentCode: candidate?.student_code ?? item.studentCode,
+                                        thesisTitle: candidate?.thesis_title ?? item.thesisTitle
+                                      }
+                                    : item
+                                ));
+                              }}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 disabled:bg-slate-100"
+                            >
+                              {!currentCandidateIsAvailable && (
+                                <option value={schedule.thesisId}>
+                                  {schedule.studentName || 'Học viên hiện tại'}
+                                  {schedule.studentCode ? ` (${schedule.studentCode})` : ''}
+                                  {schedule.thesisTitle ? ` — ${schedule.thesisTitle}` : ''}
+                                </option>
+                              )}
+                              {defenseCandidates.map(candidate => (
+                                <option key={candidate.thesis_id} value={candidate.thesis_id}>
+                                  {candidate.student_name} ({candidate.student_code}) — {candidate.thesis_title}
+                                </option>
+                              ))}
+                            </select>
+                            {schedule.evaluationCount > 0 && (
+                              <span className="block text-xs font-normal text-amber-700">
+                                Đã có {schedule.evaluationCount} phiếu chấm; không thể đổi học viên.
+                              </span>
+                            )}
+                          </label>
+                          <label className="space-y-1 text-sm font-medium text-slate-700">
+                            Lượt bảo vệ
+                            <input
+                              required
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={schedule.defenseOrder}
+                              onChange={event => setCommitteeScheduleDrafts(current => current.map(item =>
+                                item.scheduleId === schedule.scheduleId
+                                  ? { ...item, defenseOrder: Number(event.target.value) }
+                                  : item
+                              ))}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                            />
+                          </label>
+                          <label className="space-y-1 text-sm font-medium text-slate-700 md:col-span-2">
+                            Giờ bảo vệ
+                            <input
+                              required
+                              type="time"
+                              value={schedule.startTime}
+                              onChange={event => setCommitteeScheduleDrafts(current => current.map(item =>
+                                item.scheduleId === schedule.scheduleId
+                                  ? { ...item, startTime: event.target.value }
+                                  : item
+                              ))}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                            />
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </section>
+                )}
+
                 <div className="mt-8 flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-5">
                   <button
                     type="button"
-                    onClick={() => setShowCommitteeForm(false)}
+                    onClick={handleCloseCommitteeForm}
                     className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     Hủy
                   </button>
                   <button
                     type="submit"
-                    disabled={isCreatingCommittee || isLoading || lecturers.length < 5}
+                    disabled={isCreatingCommittee || isLoading || (editingCommitteeId === null && lecturers.length < 5)}
                     className="rounded-xl bg-sky-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isCreatingCommittee ? 'Đang thành lập...' : 'Lưu hội đồng'}
+                    {isCreatingCommittee
+                      ? 'Đang lưu...'
+                      : editingCommitteeId === null
+                        ? 'Lưu hội đồng'
+                        : 'Cập nhật hội đồng'}
                   </button>
                 </div>
               </form>
             </div>
+          </div>
+        )}
+
+        {scheduleCommitteeId !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <form
+              onSubmit={submitSchedule}
+              className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-6 shadow-2xl"
+            >
+              <h2 className="text-xl font-bold text-slate-900">Thêm học viên vào hội đồng</h2>
+
+              <label className="block space-y-1 text-sm font-medium text-slate-700">
+                Học viên / đề tài
+                <select
+                  required
+                  value={scheduleCandidate}
+                  onChange={event => setScheduleCandidate(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
+                >
+                  <option value="">Chọn học viên</option>
+                  {defenseCandidates.map(candidate => (
+                    <option key={candidate.thesis_id} value={candidate.thesis_id}>
+                      {candidate.student_name} ({candidate.student_code}) — {candidate.thesis_title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {defenseCandidates.length === 0 && (
+                <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                  Không còn học viên chưa được xếp lịch bảo vệ.
+                </p>
+              )}
+
+              <label className="block space-y-1 text-sm font-medium text-slate-700">
+                Lượt bảo vệ
+                <input
+                  required
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={scheduleOrder}
+                  onChange={event => setScheduleOrder(Number(event.target.value))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                />
+              </label>
+
+              <label className="block space-y-1 text-sm font-medium text-slate-700">
+                Giờ bảo vệ
+                <input
+                  required
+                  type="time"
+                  value={scheduleTime}
+                  onChange={event => setScheduleTime(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                />
+              </label>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScheduleCommitteeId(null)}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingSchedule || defenseCandidates.length === 0}
+                  className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {isAddingSchedule ? 'Đang xếp lịch...' : 'Xếp lịch'}
+                </button>
+              </div>
+            </form>
           </div>
         )}
 
@@ -343,10 +658,21 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                       {schedules.length} học viên
                     </span>
-                    <button className="text-slate-400 hover:text-sky-600" title="Chỉnh sửa hội đồng">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditCommittee(committee, schedules)}
+                      className="text-slate-400 hover:text-sky-600"
+                      title="Chỉnh sửa hội đồng"
+                    >
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" /></svg>
                     </button>
-                    <button className="text-slate-400 hover:text-rose-600" title="Xóa hội đồng">
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteCommittee(committee)}
+                      disabled={schedules.length > 0}
+                      className="text-slate-400 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={schedules.length > 0 ? 'Không thể xóa hội đồng đã có lịch bảo vệ' : 'Xóa hội đồng'}
+                    >
                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
                     </button>
                   </div>
@@ -365,11 +691,15 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-slate-900">Lịch và kết quả bảo vệ</h4>
                       {/* NÚT THÊM HỌC VIÊN */}
-                    <button 
+                    <button
                       type="button"
                       onClick={() => {
-                        // TODO: Thay bằng hàm mở form thêm học viên hoặc nhảy trang
-                        alert(`Đang phát triển tính năng thêm học viên vào hội đồng ID: ${committee.committee_id}`);
+                        setScheduleCommitteeId(committee.committee_id);
+                        setScheduleCandidate('');
+                        setScheduleOrder(schedules.length + 1);
+                        setScheduleTime('08:00');
+                        setActionError('');
+                        setNotice('');
                       }}
                       className="text-xs font-semibold text-sky-700 hover:text-sky-800 transition-colors"
                     >

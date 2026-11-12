@@ -258,6 +258,18 @@ exports.admitCandidate = async (req, res) => {
             });
         }
 
+        const profileNumber = Number(candidate.profile_id);
+        if (!Number.isSafeInteger(profileNumber) || profileNumber < 1 || profileNumber > 999999) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: 'Không thể tạo mã học viên 9 ký tự vì mã hồ sơ vượt quá giới hạn.'
+            });
+        }
+
+        const yearPrefix = String(candidate.academic_year || new Date().getFullYear()).slice(-2) + 'M';
+        const studentCode = `${yearPrefix}${String(profileNumber).padStart(6, '0')}`;
+
         // 3. Tạo tài khoản User (Role STUDENT = 3)
         const username = `hv_${candidate.id_card_number.slice(-6)}`;
         const defaultPassword = 'AGU@' + candidate.id_card_number.slice(-4);
@@ -276,11 +288,7 @@ exports.admitCandidate = async (req, res) => {
 
         const newUserId = userInsert.recordset[0].user_id;
 
-        // 4. Sinh MSHV chuẩn AGU (Ví dụ: 26M + Mã Ngành + STT, hoặc 26M8480205 + STT)
-        const yearPrefix = String(candidate.academic_year || new Date().getFullYear()).slice(-2) + 'M';
-        const studentCode = `${yearPrefix}8480205${String(candidate.profile_id).padStart(2, '0')}`;
-
-        // 5. Thêm vào bảng students
+        // 4. Thêm vào bảng students
         const studentInsert = await transaction.request()
             .input('userId', sql.BigInt, newUserId)
             .input('studentCode', sql.VarChar, studentCode)

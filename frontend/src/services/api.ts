@@ -224,11 +224,40 @@ export const api = {
         '/committee/create',
         { method: 'POST', body: JSON.stringify(body) }
       ),
+    updateCommittee: (committeeId: number, body: {
+      committeeName: string;
+      defenseDate: string;
+      defenseRoom: string;
+      presidentId: number;
+      reviewer1Id: number;
+      reviewer2Id: number;
+      secretaryId: number;
+      memberId: number;
+      schedules: {
+        scheduleId: number;
+        thesisId: number;
+        defenseOrder: number;
+        startTime: string;
+      }[];
+    }) =>
+      request<{ success: boolean; message: string }>(
+        `/committee/${committeeId}`,
+        { method: 'PUT', body: JSON.stringify(body) }
+      ),
+    deleteCommittee: (committeeId: number) =>
+      request<{ success: boolean; message: string }>(
+        `/committee/${committeeId}`,
+        { method: 'DELETE' }
+      ),
     scheduleDefense: (body: { thesisId: number; committeeId: number; defenseOrder?: number; startTime?: string }) =>
       request<{ success: boolean; message: string; defenseScheduleId: number }>(
         '/committee/schedule',
         { method: 'POST', body: JSON.stringify(body) }
       ),
+    addSchedule: (
+      committeeId: number,
+      body: { thesisId: number; defenseOrder: number; startTime: string }
+    ) => api.committee.scheduleDefense({ ...body, committeeId }),
     getSchedules: () => request('/committee/schedules'),
     evaluateDefense: (body: {
       defenseScheduleId: number;
