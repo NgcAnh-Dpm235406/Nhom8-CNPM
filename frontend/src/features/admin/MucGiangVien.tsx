@@ -37,7 +37,9 @@ export const LecturersSection = ({ dashboard }: { dashboard: AdminDashboardModel
       if (!result.success) throw new Error('Không thể tải danh sách sinh viên.');
       setViewingStudents(result.students);
     } catch (error) {
-      setStudentsError(error instanceof Error ? error.message : 'Không thể tải danh sách sinh viên.');
+      const message = error instanceof Error ? error.message : 'Không thể tải danh sách sinh viên.';
+      setStudentsError(message);
+      window.alert(message);
     } finally {
       setIsLoadingStudents(false);
     }
@@ -191,8 +193,7 @@ export const LecturersSection = ({ dashboard }: { dashboard: AdminDashboardModel
             {isLoadingStudents ? (
               <p className="py-8 text-center text-slate-500">Đang tải danh sách sinh viên...</p>
             ) : studentsError ? (
-              <div role="alert" className="py-6 text-center">
-                <p className="text-sm text-rose-700">{studentsError}</p>
+              <div className="py-6 text-center">
                 <button
                   type="button"
                   onClick={() => void openStudents(viewingLecturer)}

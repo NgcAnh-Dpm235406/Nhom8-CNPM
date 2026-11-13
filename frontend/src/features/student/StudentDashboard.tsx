@@ -17,6 +17,7 @@ import {
   PlusCircle
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 import type {
   CourseClassRecord,
   CurriculumCourseItem,
@@ -98,6 +99,8 @@ export const StudentDashboard = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  useBrowserAlert(error, setError);
+  useBrowserAlert(notice, setNotice);
 
   // 1. Tải dữ liệu toàn diện
   const loadDashboard = useCallback(async () => {
@@ -257,7 +260,7 @@ export const StudentDashboard = () => {
       fd.append('report_file', reportFile);
       const res = await api.thesis.submitReport(fd);
       if (!res.success) throw new Error(res.message);
-      setNotice(res.message);
+      window.alert(res.message);
       setIsReportModalOpen(false);
       setReportFile(null);
       await loadDashboard();
@@ -283,7 +286,7 @@ export const StudentDashboard = () => {
       fd.append('turnitin_file', turnitinFile);
       const res = await api.thesis.submitTurnitin(fd);
       if (!res.success) throw new Error(res.message);
-      setNotice(res.message);
+      window.alert(res.message);
       setIsTurnitinModalOpen(false);
       setTurnitinFile(null);
       setTurnitinScore('');
@@ -314,7 +317,7 @@ export const StudentDashboard = () => {
       fd.append('evidence_file', pubFile);
       const res = await api.thesis.submitPublication(fd);
       if (!res.success) throw new Error(res.message);
-      setNotice(res.message);
+      window.alert(res.message);
       setIsPubModalOpen(false);
       setPubFile(null);
       setPubTitle('');
@@ -344,7 +347,7 @@ export const StudentDashboard = () => {
       fd.append('certificate_file', langFile);
       const res = await api.thesis.submitCertificate(fd);
       if (!res.success) throw new Error(res.message);
-      setNotice(res.message);
+      window.alert(res.message);
       setIsLangModalOpen(false);
       setLangFile(null);
       await loadDashboard();
@@ -379,7 +382,7 @@ export const StudentDashboard = () => {
     try {
       const res = await api.student.payTuition(tuitionId, amount);
       if (!res.success) throw new Error(res.message);
-      setNotice(res.message);
+      window.alert(res.message);
       await loadDashboard();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lỗi khi thanh toán học phí.');
@@ -398,38 +401,6 @@ export const StudentDashboard = () => {
 
   return (
     <div className="mx-auto my-8 max-w-6xl space-y-6 px-4">
-      {/* Thông báo lỗi / thành công */}
-      {error && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-          <p className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-            <span>{error}</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => { setError(''); void loadDashboard(); }}
-            className="rounded-lg border border-rose-300 px-3 py-1 font-semibold hover:bg-rose-100"
-          >
-            Đóng
-          </button>
-        </div>
-      )}
-      {notice && (
-        <div role="status" className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          <p className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-            <span>{notice}</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => setNotice('')}
-            className="text-xs font-semibold text-emerald-700 hover:underline"
-          >
-            Ẩn
-          </button>
-        </div>
-      )}
-
       {/* Thẻ Header Học viên */}
       {student && (
         <div className="flex flex-col items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row">

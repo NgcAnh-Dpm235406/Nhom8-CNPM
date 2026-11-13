@@ -1,27 +1,16 @@
 import React, { useState } from 'react';
 import { Search, CheckCircle2, Clock, AlertTriangle, XCircle, UserCheck } from 'lucide-react';
 import { api } from '../../services/api';
+import { useBrowserAlert } from '../../hooks/useBrowserAlert';
+import type { AdmissionLookupResult } from '../../types';
 
-interface LookupData {
-  id: string;
-  profileId: number;
-  name: string;
-  idCard: string;
-  phone: string;
-  email: string;
-  campaign: string;
-  reviewStatus: string;
-  admissionStatus: string;
-  studentCode: string | null;
-  note: string;
-}
-
-export const ResultLookupPage: React.FC = () => {
-  const [searchKey, setSearchKey] = useState('');
-  const [searchResult, setSearchResult] = useState<LookupData | null>(null);
+export const ResultLookupPage: React.FC<{ initialSearchKey?: string }> = ({ initialSearchKey = '' }) => {
+  const [searchKey, setSearchKey] = useState(initialSearchKey);
+  const [searchResult, setSearchResult] = useState<AdmissionLookupResult | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  useBrowserAlert(errorMessage, setErrorMessage);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,8 +98,7 @@ export const ResultLookupPage: React.FC = () => {
         </button>
       </form>
 
-      {hasSearched && (
-        searchResult ? (
+      {hasSearched && searchResult && (
           <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
@@ -171,17 +159,6 @@ export const ResultLookupPage: React.FC = () => {
               <p className="mt-1 leading-relaxed text-slate-600">{searchResult.note}</p>
             </div>
           </div>
-        ) : (
-          <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center text-slate-600 shadow-sm">
-            <XCircle className="mx-auto h-12 w-12 text-rose-500" />
-            <p className="mt-3 text-base font-semibold text-rose-700">
-              {errorMessage || 'Không tìm thấy thông tin hồ sơ!'}
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Vui lòng kiểm tra lại số CCCD hoặc mã hồ sơ dự tuyển đã nhận khi nộp trực tuyến.
-            </p>
-          </div>
-        )
       )}
     </div>
   );

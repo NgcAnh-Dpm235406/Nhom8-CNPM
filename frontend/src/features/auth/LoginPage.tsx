@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { AuthUser, RoleCode } from '../../types';
 import { api } from '../../services/api';
+import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 
 interface LoginPageProps {
   onAuthenticated: (token: string, user: AuthUser) => void;
@@ -15,6 +16,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, onNavigat
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  useBrowserAlert(error, setError);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -76,12 +78,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, onNavigat
               required
             />
           </div>
-
-          {error && (
-            <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {error}
-            </p>
-          )}
 
           <button
             type="submit"

@@ -66,7 +66,8 @@ const readSession = (): AuthSession | null => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [selectedMajor, setSelectedMajor] = useState<string>('KTPM');
+  const [selectedMajor, setSelectedMajor] = useState<string>('8480205');
+  const [lookupSearchKey, setLookupSearchKey] = useState('');
   const [session, setSession] = useState<AuthSession | null>(readSession);
   const activeAdminSection = adminSections[activeTab];
 
@@ -80,6 +81,7 @@ export default function App() {
 
   const handleNavigate = (tab: TabType, majorCode?: string) => {
     if (!allowedTabs.includes(tab)) return;
+    if (tab !== 'lookup') setLookupSearchKey('');
     if (majorCode) {
       setSelectedMajor(majorCode);
     }
@@ -109,8 +111,18 @@ export default function App() {
 
       <main className="flex-1 pb-16">
         {activeTab === 'home' && <HomePage onNavigate={handleNavigate} />}
-        {activeTab === 'register' && allowedTabs.includes('register') && <RegisterPage initialMajorCode={selectedMajor} />}
-        {activeTab === 'lookup' && allowedTabs.includes('lookup') && <ResultLookupPage />}
+        {activeTab === 'register' && allowedTabs.includes('register') && (
+          <RegisterPage
+            initialMajorCode={selectedMajor}
+            onNavigateToLookup={profileCode => {
+              setLookupSearchKey(profileCode);
+              handleNavigate('lookup');
+            }}
+          />
+        )}
+        {activeTab === 'lookup' && allowedTabs.includes('lookup') && (
+          <ResultLookupPage initialSearchKey={lookupSearchKey} />
+        )}
         {activeTab === 'student' && allowedTabs.includes('student') && <StudentDashboard />}
         {activeTab === 'student-profile' && allowedTabs.includes('student-profile') && <StudentProfilePage />}
         {activeTab === 'faculty' && allowedTabs.includes('faculty') && <FacultyDashboard />}

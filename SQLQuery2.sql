@@ -97,6 +97,7 @@ CREATE TABLE [admission_campaigns] (
 CREATE TABLE [admission_profiles] (
     [profile_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [campaign_id] INT NOT NULL,
+    [major_id] INT NULL,
     [full_name] NVARCHAR(150) NOT NULL,
     [dob] DATE NOT NULL,
     [id_card_number] VARCHAR(20) NOT NULL UNIQUE,
@@ -119,6 +120,9 @@ CREATE TABLE [majors] (
     [major_code] VARCHAR(20) NOT NULL UNIQUE, -- Mã ngành Bộ GD&ĐT (VD: 8480205)
     [major_name] NVARCHAR(150) NOT NULL
 );
+
+ALTER TABLE [admission_profiles]
+ADD CONSTRAINT [FK_profiles_majors] FOREIGN KEY ([major_id]) REFERENCES [majors]([major_id]);
 
 CREATE TABLE [curriculums] (
     [curriculum_id] INT IDENTITY(1,1) PRIMARY KEY,
@@ -604,9 +608,9 @@ INSERT INTO [lecturers] ([user_id], [lecturer_code], [full_name], [degree], [max
 INSERT INTO [admission_campaigns] ([campaign_name], [academic_year], [start_date], [end_date]) VALUES
 (N'Tuyển sinh Cao học Đợt 1 - Năm 2024', 2024, '2024-03-01', '2024-05-30');
 
-INSERT INTO [admission_profiles] ([campaign_id], [full_name], [dob], [id_card_number], [phone], [email], [status], [admission_status]) VALUES
-(1, N'Nguyễn Thị Ngân Huệ', '2001-05-12', '089201004123', '0987654321', 'dpm235422@agu.edu.vn', N'Đạt yêu cầu', N'Đã nhập học'),
-(1, N'Huỳnh Hiếu', '2001-08-20', '089201004124', '0987654322', 'dpm235419@agu.edu.vn', N'Đạt yêu cầu', N'Đã nhập học');
+INSERT INTO [admission_profiles] ([campaign_id], [major_id], [full_name], [dob], [id_card_number], [phone], [email], [status], [admission_status]) VALUES
+(1, 1, N'Nguyễn Thị Ngân Huệ', '2001-05-12', '089201004123', '0987654321', 'dpm235422@agu.edu.vn', N'Đạt yêu cầu', N'Đã nhập học'),
+(1, 2, N'Huỳnh Hiếu', '2001-08-20', '089201004124', '0987654322', 'dpm235419@agu.edu.vn', N'Đạt yêu cầu', N'Đã nhập học');
 
 -- 7. Học viên Thạc sĩ (Students)
 INSERT INTO [students] ([user_id], [student_code], [profile_id], [curriculum_id], [academic_status], [enrollment_date]) VALUES

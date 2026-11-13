@@ -9,11 +9,11 @@ import {
   ExternalLink,
   Star,
   CheckCircle2,
-  AlertCircle,
   RefreshCw,
   Send
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 import type {
   FacultyAdvisorDashboard,
   FacultySubmissionRecord,
@@ -47,6 +47,8 @@ export const FacultyDashboard = () => {
 
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  useBrowserAlert(error, setError);
+  useBrowserAlert(notice, setNotice);
 
   // 1. Tải dữ liệu Yêu cầu & Quota
   const loadRequests = useCallback(async () => {
@@ -204,38 +206,6 @@ export const FacultyDashboard = () => {
 
   return (
     <div className="mx-auto my-8 max-w-6xl space-y-6 px-4">
-      {/* Thông báo lỗi / thành công */}
-      {error && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-          <p className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-            <span>{error}</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => { setError(''); void loadRequests(); void loadSubmissions(); void loadCommittees(); }}
-            className="rounded-lg border border-rose-300 px-3 py-1 font-semibold hover:bg-rose-100"
-          >
-            Đóng
-          </button>
-        </div>
-      )}
-      {notice && (
-        <div role="status" className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          <p className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-            <span>{notice}</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => setNotice('')}
-            className="text-xs font-semibold text-emerald-700 hover:underline"
-          >
-            Ẩn
-          </button>
-        </div>
-      )}
-
       {/* 3 Thẻ Quota slot của Giảng viên */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

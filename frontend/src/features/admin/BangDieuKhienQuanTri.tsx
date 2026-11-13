@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useState } from 'react';
 import { Check, CheckCircle2, Clipboard, X } from 'lucide-react';
 import { AdmissionsSection } from './MucTuyenSinh';
@@ -6,18 +5,16 @@ import { CommitteesSection } from './MucHoiDong';
 import { LecturersSection } from './MucGiangVien';
 import { useAdminDashboard } from './useDuLieuQuanTri';
 import type { AdminSection } from '../../types';
+import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 
 export const AdminDashboard = ({ section }: { section: AdminSection }) => {
   const dashboard = useAdminDashboard();
-  const { loadError, actionError, notice, setNotice, issuedAccount, setIssuedAccount } = dashboard;
-  const [copyError, setCopyError] = useState('');
+  const { loadError, actionError, notice, issuedAccount, setIssuedAccount } = dashboard;
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (!notice) return;
-    window.alert(notice);
-    setNotice('');
-  }, [notice, setNotice]);
+  useBrowserAlert(loadError, dashboard.setLoadError);
+  useBrowserAlert(actionError, dashboard.setActionError);
+  useBrowserAlert(notice, dashboard.setNotice);
 
   const sectionTitle = section === 'admissions'
     ? 'Quản lý tuyển sinh'
@@ -36,11 +33,11 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
 
     try {
       await navigator.clipboard.writeText(credentials);
-      setCopyError('');
       setCopied(true);
+      window.alert('Đã sao chép thông tin tài khoản.');
     } catch {
       setCopied(false);
-      setCopyError('Không thể sao chép tự động. Vui lòng chọn và sao chép thông tin trong hộp thoại.');
+      window.alert('Không thể sao chép tự động. Vui lòng chọn và sao chép thông tin trong hộp thoại.');
     }
   };
 
@@ -61,13 +58,6 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
           </div>
         </div>
       </div>
-
-      {(loadError || actionError) && (
-        <div className="space-y-2" aria-live="polite">
-          {loadError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}</p>}
-          {actionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{actionError}</p>}
-        </div>
-      )}
 
       {issuedAccount && (
         <div
@@ -122,9 +112,6 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
             <p className="mt-3 text-xs leading-relaxed text-amber-800">
               Hãy chuyển thông tin đăng nhập trực tiếp và an toàn cho học viên. Khuyến nghị đổi mật khẩu sau lần đăng nhập đầu tiên.
             </p>
-            {copyError && <p role="alert" className="mt-3 text-sm text-rose-700">{copyError}</p>}
-            {copied && <p role="status" className="mt-3 text-sm text-emerald-700">Đã sao chép thông tin tài khoản.</p>}
-
             <div className="mt-6 flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <button
                 type="button"

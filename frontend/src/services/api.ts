@@ -1,5 +1,7 @@
 import type {
   AdminCommitteeRecord,
+  AdmissionCampaign,
+  AdmissionLookupResult,
   AdmissionProfile,
   AuthUser,
   CourseClassRecord,
@@ -15,6 +17,7 @@ import type {
   LecturerCommitteeRecord,
   LecturerInput,
   LecturerStudent,
+  Major,
   PublicationRecord,
   StudentAdvisor,
   StudentGradeRecord,
@@ -29,7 +32,7 @@ import type {
 const BASE_URL = '/api';
 
 // Helper gửi request kèm Token tự động
-async function request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+async function request<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('agu_token');
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> || {})
@@ -88,14 +91,18 @@ export const api = {
 
   // 2. Phân hệ Tuyển sinh Thạc sĩ
   admission: {
-    getCampaigns: () => request('/admission/campaigns'),
+    getCampaigns: () =>
+      request<{ success: boolean; campaigns: AdmissionCampaign[] }>('/admission/campaigns'),
     register: (formData: FormData) =>
       request<{
         success: boolean;
         message: string;
         data: { profileId: number; profileCode: string };
       }>('/admission/register', { method: 'POST', body: formData }),
-    lookup: (key: string) => request(`/admission/lookup?key=${encodeURIComponent(key)}`),
+    lookup: (key: string) =>
+      request<{ success: boolean; message?: string; data?: AdmissionLookupResult }>(
+        `/admission/lookup?key=${encodeURIComponent(key)}`
+      ),
     getAllProfiles: (params?: { status?: string; admissionStatus?: string; campaignId?: number }) => {
       const query = new URLSearchParams();
       if (params?.status) query.set('status', params.status);
@@ -116,7 +123,7 @@ export const api = {
 
   // 3. Phân hệ Chương trình đào tạo & Giảng viên
   academic: {
-    getMajors: () => request('/academic/majors'),
+    getMajors: () => request<{ success: boolean; majors: Major[] }>('/academic/majors'),
     getCurriculums: (majorId?: number) =>
       request(`/academic/curriculums${majorId ? `?majorId=${majorId}` : ''}`),
     getCurriculumCourses: (curriculumId: number | string) =>
@@ -205,7 +212,10 @@ export const api = {
         { method: 'PUT', body: JSON.stringify({ action }) }
       ),
     registerTopic: (thesisTitle: string) =>
-      request('/thesis/register-topic', { method: 'POST', body: JSON.stringify({ thesisTitle }) }),
+      request<{ success: boolean; message: string }>(
+        '/thesis/register-topic',
+        { method: 'POST', body: JSON.stringify({ thesisTitle }) }
+      ),
     getMyProgress: (studentId?: number | string) =>
       request<{
         success: boolean;
@@ -294,7 +304,10 @@ export const api = {
       presentationScore: number;
       qaScore: number;
       feedback?: string;
-    }) => request('/committee/evaluate', { method: 'POST', body: JSON.stringify(body) }),
+    }) => request<{ success: boolean; message: string; finalSummary?: { average_score: number | null; result: string | null } }>(
+      '/committee/evaluate',
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
     calculateGrade: (scheduleId: number | string) =>
       request<{ success: boolean; message: string; data: { average_score: number | null; result: string | null } }>(
         `/committee/calculate-grade/${scheduleId}`,

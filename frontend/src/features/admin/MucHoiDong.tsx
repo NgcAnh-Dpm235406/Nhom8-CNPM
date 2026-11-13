@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { AdminDashboardModel } from './useDuLieuQuanTri';
+import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 
 export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardModel }) => {
   const {
@@ -7,7 +8,6 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
     setShowCommitteeForm,
     setActionError,
     setNotice,
-    actionError,
     lecturers,
     isLoading,
     committeeForm,
@@ -53,6 +53,14 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
   const [scheduleCandidate, setScheduleCandidate] = useState('');
   const [scheduleOrder, setScheduleOrder] = useState(1);
   const [scheduleTime, setScheduleTime] = useState('08:00');
+
+  useBrowserAlert(scoreFormError, dashboard.setScoreFormError);
+
+  useEffect(() => {
+    if (showCommitteeForm && !isLoading && lecturers.length < 5) {
+      window.alert(`Danh sách hiện có ${lecturers.length} giảng viên; cần ít nhất 5 giảng viên để lập hội đồng.`);
+    }
+  }, [showCommitteeForm, isLoading, lecturers.length]);
 
   const submitSchedule = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -306,20 +314,9 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                 </button>
               </div>
 
-              {actionError && (
-                <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                  {actionError}
-                </p>
-              )}
               {editingCommitteeId !== null && committeeScheduleDrafts.some(schedule => schedule.evaluationCount > 0) && (
                 <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                   Hội đồng đã có phiếu chấm. Có thể sửa tên, ngày, phòng và giờ/lượt bảo vệ, nhưng không thể đổi giảng viên hoặc học viên đã được chấm.
-                </p>
-              )}
-
-              {lecturers.length < 5 && !isLoading && (
-                <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-                  Danh sách hiện có {lecturers.length} giảng viên; cần ít nhất 5 giảng viên để lập hội đồng.
                 </p>
               )}
 
@@ -782,11 +779,6 @@ export const CommitteesSection = ({ dashboard }: { dashboard: AdminDashboardMode
                                     }}
                                     className="space-y-4"
                                   >
-                                    {scoreFormError && (
-                                      <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
-                                        {scoreFormError}
-                                      </p>
-                                    )}
                                     <p className="text-sm text-slate-600">
                                       Nhập điểm theo từng thành viên hội đồng: nội dung tối đa 5, trình bày tối đa 2.5, hỏi đáp tối đa 2.5. Cần ít nhất 3 phiếu để cập nhật kết quả.
                                     </p>

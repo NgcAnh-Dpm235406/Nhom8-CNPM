@@ -5,6 +5,8 @@ Hệ quản trị cơ sở dữ liệu: **Microsoft SQL Server (T-SQL)**.
 ## 1. File kịch bản khởi tạo
 - [`schema_and_seed.sql`](./schema_and_seed.sql) (hoặc file gốc [`../SQLQuery2.sql`](../SQLQuery2.sql)).
 - Tự động xóa CSDL cũ nếu tồn tại (`DROP DATABASE agu_postgrad_db`), khởi tạo 21 bảng quan hệ, ràng buộc RBAC, triggers, stored procedures và nạp dữ liệu mẫu (seed data) thực tế của Trường Đại học An Giang.
+- Khi cần nâng cấp CSDL đã có dữ liệu, chạy riêng migration [`migrations/add_admission_profile_major_id.sql`](./migrations/add_admission_profile_major_id.sql); không chạy lại script khởi tạo vì script đó xóa database.
+- API đăng ký chỉ trả về đợt tuyển sinh có ngày hiện tại nằm trong `start_date`–`end_date`; dữ liệu seed hiện có là đợt năm 2024 đã đóng, nên hãy tạo/cập nhật đợt phù hợp trước khi thử nộp hồ sơ.
 
 ## 2. Các Stored Procedures quan trọng
 - `sp_check_thesis_defense_gatekeeper`: Chốt chặn Gatekeeper kiểm tra 4 điều kiện bảo vệ luận văn (Học phí = 0, Turnitin ≤ 20%, ≥ 1 bài báo khoa học Đạt, chứng chỉ ngoại ngữ VSTEP B2/IELTS 5.5+ Đạt).

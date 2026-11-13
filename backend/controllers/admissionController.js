@@ -8,6 +8,7 @@ exports.getCampaigns = async (req, res) => {
         const result = await pool.request().query(`
             SELECT campaign_id, campaign_name, academic_year, start_date, end_date
             FROM admission_campaigns
+            WHERE CAST(GETDATE() AS DATE) BETWEEN start_date AND end_date
             ORDER BY academic_year DESC, campaign_id DESC
         `);
         res.json({ success: true, campaigns: result.recordset });
@@ -20,17 +21,49 @@ exports.getCampaigns = async (req, res) => {
 // Phục vụ màn hình RegisterPage.tsx
 exports.registerProfile = async (req, res) => {
     try {
-        const { fullName, email, phone, idCardNumber, majorCode, campaignId = 1, dob = '2000-01-01', address } = req.body;
+        const { fullName, email, phone, idCardNumber, campaignId, majorId, dob, address } = req.body;
         const degreeFileUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
-        if (!fullName || !email || !phone || !idCardNumber) {
+        const requiredTextFields = [fullName, email, phone, idCardNumber, dob, address];
+        if (requiredTextFields.some(value => typeof value !== 'string' || !value.trim()) || !campaignId || !majorId) {
             return res.status(400).json({
                 success: false,
-                message: 'Vui lòng cung cấp đầy đủ: Họ tên, Email, Số điện thoại và Số CCCD!'
+                message: 'Vui lòng cung cấp đầy đủ thông tin cá nhân, đợt tuyển sinh và ngành dự tuyển!'
             });
+        }
+        const parsedDob = new Date(`${dob}T00:00:00Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(parsedDob.getTime()) || parsedDob.toISOString().slice(0, 10) !== dob) {
+            return res.status(400).json({ success: false, message: 'Ngày sinh không hợp lệ.' });
+        }
+        if (!degreeFileUrl) {
+            return res.status(400).json({ success: false, message: 'Vui lòng tải lên file hồ sơ minh chứng.' });
+        }
+
+        const campaignIdNumber = Number(campaignId);
+        const majorIdNumber = Number(majorId);
+        if (!Number.isSafeInteger(campaignIdNumber) || !Number.isSafeInteger(majorIdNumber)) {
+            return res.status(400).json({ success: false, message: 'Đợt tuyển sinh hoặc ngành dự tuyển không hợp lệ.' });
         }
 
         const pool = await poolPromise;
+        const openCampaign = await pool.request()
+            .input('campaignId', sql.Int, campaignIdNumber)
+            .query(`
+                SELECT campaign_id
+                FROM admission_campaigns
+                WHERE campaign_id = @campaignId
+                  AND CAST(GETDATE() AS DATE) BETWEEN start_date AND end_date
+            `);
+        if (openCampaign.recordset.length === 0) {
+            return res.status(400).json({ success: false, message: 'Đợt tuyển sinh đã đóng hoặc không tồn tại.' });
+        }
+
+        const selectedMajor = await pool.request()
+            .input('majorId', sql.Int, majorIdNumber)
+            .query('SELECT major_id FROM majors WHERE major_id = @majorId');
+        if (selectedMajor.recordset.length === 0) {
+            return res.status(400).json({ success: false, message: 'Ngành dự tuyển không tồn tại.' });
+        }
 
         // Kiểm tra xem số CCCD đã từng nộp trong đợt này chưa
         const checkExist = await pool.request()
@@ -45,18 +78,19 @@ exports.registerProfile = async (req, res) => {
         }
 
         const result = await pool.request()
-            .input('campaignId', sql.Int, parseInt(campaignId) || 1)
+            .input('campaignId', sql.Int, campaignIdNumber)
+            .input('majorId', sql.Int, majorIdNumber)
             .input('fullName', sql.NVarChar, fullName.trim())
             .input('dob', sql.Date, dob)
             .input('idCard', sql.VarChar, idCardNumber.trim())
             .input('phone', sql.VarChar, phone.trim())
             .input('email', sql.VarChar, email.trim().toLowerCase())
-            .input('address', sql.NVarChar, address || 'Chưa cập nhật')
+            .input('address', sql.NVarChar, address.trim())
             .input('degreeFile', sql.NVarChar, degreeFileUrl)
             .query(`
-                INSERT INTO admission_profiles (campaign_id, full_name, dob, id_card_number, phone, email, address, undergrad_degree_file, status, admission_status)
+                INSERT INTO admission_profiles (campaign_id, major_id, full_name, dob, id_card_number, phone, email, address, undergrad_degree_file, status, admission_status)
                 OUTPUT INSERTED.profile_id
-                VALUES (@campaignId, @fullName, @dob, @idCard, @phone, @email, @address, @degreeFile, N'Chờ xét duyệt', N'Chưa trúng tuyển')
+                VALUES (@campaignId, @majorId, @fullName, @dob, @idCard, @phone, @email, @address, @degreeFile, N'Chờ xét duyệt', N'Chưa trúng tuyển')
             `);
 
         const profileId = result.recordset[0].profile_id;

@@ -84,7 +84,7 @@ export const HomePage: React.FC<Props> = ({ onNavigate }) => {
               </div>
             </div>
             <button 
-              onClick={() => onNavigate('register', 'KTPM')}
+              onClick={() => onNavigate('register', '8480205')}
               className="mt-6 w-full py-2.5 rounded-xl bg-slate-100 hover:bg-sky-600 hover:text-white text-slate-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition"
             >
               <span>Đăng ký ngành này</span>
@@ -103,7 +103,7 @@ export const HomePage: React.FC<Props> = ({ onNavigate }) => {
               </div>
             </div>
             <button 
-              onClick={() => onNavigate('register', 'KHMT')}
+              onClick={() => onNavigate('register', '8480101')}
               className="mt-6 w-full py-2.5 rounded-xl bg-slate-100 hover:bg-sky-600 hover:text-white text-slate-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition"
             >
               <span>Đăng ký ngành này</span>
@@ -122,7 +122,7 @@ export const HomePage: React.FC<Props> = ({ onNavigate }) => {
               </div>
             </div>
             <button 
-              onClick={() => onNavigate('register', 'QTKD')}
+              onClick={() => onNavigate('register', '8340101')}
               className="mt-6 w-full py-2.5 rounded-xl bg-slate-100 hover:bg-sky-600 hover:text-white text-slate-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition"
             >
               <span>Đăng ký ngành này</span>

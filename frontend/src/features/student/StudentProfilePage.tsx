@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from '../../services/api';
 import type { StudentInfo } from '../../types';
+import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 
 export const StudentProfilePage = () => {
   const [student, setStudent] = useState<StudentInfo | null>(null);
@@ -12,6 +13,8 @@ export const StudentProfilePage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  useBrowserAlert(error, setError);
+  useBrowserAlert(notice, setNotice);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -63,9 +66,6 @@ export const StudentProfilePage = () => {
         <h1 className="mt-1 text-3xl font-bold text-slate-900">Thông tin cá nhân</h1>
         <p className="mt-2 text-slate-600">Cập nhật email liên hệ, số điện thoại và địa chỉ của bạn.</p>
       </header>
-
-      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
-      {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p>}
 
       {isLoading ? (
         <p className="rounded-2xl bg-white p-8 text-center text-slate-500">Đang tải thông tin cá nhân...</p>

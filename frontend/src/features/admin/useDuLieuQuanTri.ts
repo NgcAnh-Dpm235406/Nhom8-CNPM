@@ -561,14 +561,12 @@ export const useAdminDashboard = () => {
       if (fields.some(value => value === '')) {
         const message = `Vui lòng nhập đủ 3 đầu điểm cho ${role.label}, hoặc để trống cả 3.`;
         setScoreFormError(message);
-        setActionError(message);
         return;
       }
       const lecturerId = resolveEvaluationLecturerId(role, committee, lecturers);
       if (lecturerId === null) {
         const message = `Không xác định được mã giảng viên ${role.label} (${role.lecturerName(committee)}). Hãy khởi động lại backend rồi tải lại trang.`;
         setScoreFormError(message);
-        setActionError(message);
         return;
       }
       evaluations.push({
@@ -583,7 +581,6 @@ export const useAdminDashboard = () => {
     if (evaluations.length === 0) {
       const message = 'Nhập điểm cho ít nhất một thành viên hội đồng.';
       setScoreFormError(message);
-      setActionError(message);
       return;
     }
 
@@ -627,11 +624,10 @@ export const useAdminDashboard = () => {
 
       setActiveScoreScheduleId(null);
       await loadData();
-      alert(successMessage);
+      setNotice(successMessage);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể lưu phiếu chấm.';
       setScoreFormError(message);
-      setActionError(message);
     } finally {
       setBusyScoreScheduleId(null);
     }
@@ -654,6 +650,7 @@ export const useAdminDashboard = () => {
     isSavingLecturer,
     isLoading,
     loadError,
+    setLoadError,
     actionError,
     setActionError,
     notice,
@@ -676,6 +673,7 @@ export const useAdminDashboard = () => {
     setScoreDrafts,
     busyScoreScheduleId,
     scoreFormError,
+    setScoreFormError,
     committeeMembers,
     setCommitteeMembers,
     committeeScheduleDrafts,

@@ -38,6 +38,34 @@ export interface AdmissionProfile {
   student_code: string | null;
 }
 
+export interface AdmissionCampaign {
+  campaign_id: number;
+  campaign_name: string;
+  academic_year: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface Major {
+  major_id: number;
+  major_code: string;
+  major_name: string;
+}
+
+export interface AdmissionLookupResult {
+  id: string;
+  profileId: number;
+  name: string;
+  idCard: string;
+  phone: string;
+  email: string;
+  campaign: string;
+  reviewStatus: string;
+  admissionStatus: string;
+  studentCode: string | null;
+  note: string;
+}
+
 export interface Lecturer {
   lecturer_id: number;
   user_id?: number;
