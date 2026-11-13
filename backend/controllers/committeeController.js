@@ -93,7 +93,7 @@ exports.createCommittee = async (req, res) => {
             const candidateResult = await transaction.request()
                 .input('thesisId', sql.BigInt, thesisId)
                 .query(`
-                    SELECT thesis_id
+                    SELECT thesis_id, student_id
                     FROM thesis_progress
                     WHERE thesis_id = @thesisId
                       AND NOT EXISTS (
@@ -107,6 +107,25 @@ exports.createCommittee = async (req, res) => {
                 return res.status(409).json({
                     success: false,
                     message: 'Đề tài không tồn tại hoặc học viên đã được xếp lịch bảo vệ.'
+                });
+            }
+
+            const candidateStudentId = candidateResult.recordset[0].student_id;
+
+            // Chốt chặn Gatekeeper: Kiểm tra 4 điều kiện bảo vệ luận văn
+            const gatekeeperReq = transaction.request();
+            gatekeeperReq.input('p_student_id', sql.BigInt, candidateStudentId);
+            gatekeeperReq.output('p_is_eligible', sql.Bit);
+            gatekeeperReq.output('p_message', sql.NVarChar(sql.MAX));
+            const gatekeeperRes = await gatekeeperReq.execute('sp_check_thesis_defense_gatekeeper');
+
+            if (!Boolean(gatekeeperRes.output.p_is_eligible)) {
+                await transaction.rollback();
+                transactionComplete = true;
+                return res.status(400).json({
+                    success: false,
+                    message: `[Chặn Gatekeeper] Học viên chưa đủ điều kiện bảo vệ luận văn: ${gatekeeperRes.output.p_message}`,
+                    gatekeeperMessage: gatekeeperRes.output.p_message
                 });
             }
 
@@ -502,6 +521,33 @@ exports.scheduleDefense = async (req, res) => {
         }
 
         const pool = await poolPromise;
+
+        // 1. Kiểm tra đề tài và học viên
+        const studentCheck = await pool.request()
+            .input('thesisId', sql.BigInt, thesisId)
+            .query(`SELECT student_id FROM thesis_progress WHERE thesis_id = @thesisId`);
+
+        if (!studentCheck.recordset.length) {
+            return res.status(404).json({ success: false, message: 'Đề tài không tồn tại!' });
+        }
+
+        const studentId = studentCheck.recordset[0].student_id;
+
+        // 2. Chốt chặn Gatekeeper: Kiểm tra 4 điều kiện bảo vệ luận văn
+        const gatekeeperReq = pool.request();
+        gatekeeperReq.input('p_student_id', sql.BigInt, studentId);
+        gatekeeperReq.output('p_is_eligible', sql.Bit);
+        gatekeeperReq.output('p_message', sql.NVarChar(sql.MAX));
+        const gatekeeperRes = await gatekeeperReq.execute('sp_check_thesis_defense_gatekeeper');
+
+        if (!Boolean(gatekeeperRes.output.p_is_eligible)) {
+            return res.status(400).json({
+                success: false,
+                message: `[Chặn Gatekeeper] Học viên chưa đủ điều kiện bảo vệ luận văn: ${gatekeeperRes.output.p_message}`,
+                gatekeeperMessage: gatekeeperRes.output.p_message
+            });
+        }
+
         const result = await pool.request()
             .input('thesisId', sql.BigInt, thesisId)
             .input('committeeId', sql.Int, committeeId)
@@ -532,6 +578,78 @@ exports.scheduleDefense = async (req, res) => {
                 message: 'Học viên đã được xếp lịch bảo vệ ở một hội đồng khác.'
             });
         }
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// 4b. Giảng viên lấy danh sách Hội đồng mà mình tham gia (GET /api/committee/my-committees)
+exports.getMyCommittees = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        let lecturerId = req.user.role_code === 'LECTURER' ? req.user.lecturer_id : null;
+        if (!lecturerId) {
+            const lecRes = await pool.request()
+                .input('userId', sql.BigInt, req.user.user_id)
+                .query(`SELECT lecturer_id FROM lecturers WHERE user_id = @userId`);
+            if (lecRes.recordset.length > 0) {
+                lecturerId = lecRes.recordset[0].lecturer_id;
+            }
+        }
+
+        if (!lecturerId && req.user.role_code === 'ADMIN' && req.query.lecturerId) {
+            lecturerId = req.query.lecturerId;
+        }
+
+        if (!lecturerId) {
+            return res.status(400).json({ success: false, message: 'Không tìm thấy thông tin giảng viên!' });
+        }
+
+        const result = await pool.request()
+            .input('lecId', sql.Int, lecturerId)
+            .query(`
+                SELECT 
+                    c.committee_id,
+                    c.committee_name,
+                    c.defense_date,
+                    c.defense_room,
+                    CASE 
+                        WHEN c.president_id = @lecId THEN N'Chủ tịch'
+                        WHEN c.reviewer_1_id = @lecId THEN N'Phản biện 1'
+                        WHEN c.reviewer_2_id = @lecId THEN N'Phản biện 2'
+                        WHEN c.secretary_id = @lecId THEN N'Thư ký'
+                        WHEN c.member_id = @lecId THEN N'Ủy viên'
+                        ELSE N'Thành viên'
+                    END AS my_role,
+                    ds.defense_schedule_id,
+                    ds.defense_order,
+                    ds.start_time,
+                    ds.average_score,
+                    ds.result AS defense_result,
+                    tp.thesis_id,
+                    tp.thesis_title,
+                    s.student_code,
+                    p.full_name AS student_name,
+                    ev.content_score,
+                    ev.presentation_score,
+                    ev.qa_score,
+                    ev.total_score,
+                    ev.feedback AS my_feedback
+                FROM defense_committees c
+                JOIN thesis_defense_schedules ds ON ds.committee_id = c.committee_id
+                JOIN thesis_progress tp ON ds.thesis_id = tp.thesis_id
+                JOIN students s ON tp.student_id = s.student_id
+                JOIN admission_profiles p ON s.profile_id = p.profile_id
+                LEFT JOIN defense_evaluations ev ON ev.defense_schedule_id = ds.defense_schedule_id AND ev.lecturer_id = @lecId
+                WHERE c.president_id = @lecId 
+                   OR c.reviewer_1_id = @lecId 
+                   OR c.reviewer_2_id = @lecId 
+                   OR c.secretary_id = @lecId 
+                   OR c.member_id = @lecId
+                ORDER BY c.defense_date DESC, ds.defense_order ASC
+            `);
+
+        res.json({ success: true, committees: result.recordset });
+    } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 };

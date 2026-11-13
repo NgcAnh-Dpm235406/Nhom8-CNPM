@@ -1,68 +1,185 @@
 import React, { useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, CheckCircle2, Clock, AlertTriangle, XCircle, UserCheck } from 'lucide-react';
+import { api } from '../../services/api';
+
+interface LookupData {
+  id: string;
+  profileId: number;
+  name: string;
+  idCard: string;
+  phone: string;
+  email: string;
+  campaign: string;
+  reviewStatus: string;
+  admissionStatus: string;
+  studentCode: string | null;
+  note: string;
+}
 
 export const ResultLookupPage: React.FC = () => {
   const [searchKey, setSearchKey] = useState('');
-  const [searchResult, setSearchResult] = useState<any | null>(null);
+  const [searchResult, setSearchResult] = useState<LookupData | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!searchKey.trim()) return;
+
     setHasSearched(true);
-    if (searchKey.trim() === '0892' || searchKey.trim() === '089201000123') {
-      setSearchResult({
-        id: 'THS-2026-0892',
-        name: 'Nguyễn Thị Ngân Huệ',
-        idCard: '089201000123',
-        major: 'Kỹ thuật Phần mềm (Chương trình Thạc sĩ Khóa 2026)',
-        status: 'Trúng Tuyển Chính Thức',
-        note: 'Đã hoàn tất hồ sơ xét tuyển. Giấy báo trúng tuyển đã gửi qua Email đăng ký.'
-      });
-    } else {
-      setSearchResult(null);
+    setIsLoading(true);
+    setErrorMessage('');
+    setSearchResult(null);
+
+    try {
+      const response = await api.admission.lookup(searchKey.trim());
+      if (response && response.success && response.data) {
+        setSearchResult(response.data);
+      } else {
+        setErrorMessage(response?.message || 'Không tìm thấy hồ sơ dự tuyển phù hợp.');
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Lỗi khi tra cứu hồ sơ. Vui lòng thử lại!');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getReviewBadge = (status: string) => {
+    switch (status) {
+      case 'Đạt yêu cầu':
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Đạt yêu cầu
+          </span>
+        );
+      case 'Chờ xét duyệt':
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+            <Clock className="h-3.5 w-3.5" /> Chờ xét duyệt
+          </span>
+        );
+      case 'Cần bổ sung':
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">
+            <AlertTriangle className="h-3.5 w-3.5" /> Cần bổ sung hồ sơ
+          </span>
+        );
+      case 'Không đạt':
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">
+            <XCircle className="h-3.5 w-3.5" /> Không đạt
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800">
+            {status}
+          </span>
+        );
     }
   };
 
   return (
-    <div className="max-w-3xl mx-auto my-12 px-4">
-      <h1 className="text-3xl font-bold text-center text-slate-800 mb-2">Tra Cứu Hồ Sơ & Kết Quả Tuyển Sinh</h1>
-      <p className="text-center text-slate-500 text-sm mb-6">
-        Nhập số CCCD hoặc Mã hồ sơ (Thử nghiệm với mã: <code className="bg-sky-100 px-2 py-0.5 rounded text-sky-700 font-mono">0892</code>)
+    <div className="mx-auto my-12 max-w-3xl px-4">
+      <h1 className="text-center text-3xl font-extrabold text-slate-900">
+        Tra Cứu Hồ Sơ & Kết Quả Tuyển Sinh
+      </h1>
+      <p className="mt-2 text-center text-sm text-slate-500">
+        Nhập số CCCD (12 số) hoặc Mã hồ sơ dự tuyển (ví dụ: <code className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-sky-800">089201004123</code>)
       </p>
 
-      <form onSubmit={handleSearch} className="relative mb-8">
-        <input 
-          type="text" placeholder="Nhập CCCD hoặc Mã hồ sơ..."
-          value={searchKey} onChange={e => setSearchKey(e.target.value)}
-          className="w-full pl-5 pr-28 py-4 rounded-2xl border border-slate-300 outline-none text-sm focus:ring-2 focus:ring-sky-500 shadow-sm"
+      <form onSubmit={handleSearch} className="relative my-8">
+        <input
+          type="text"
+          placeholder="Nhập số CCCD hoặc Mã hồ sơ..."
+          value={searchKey}
+          onChange={e => setSearchKey(e.target.value)}
+          className="w-full rounded-2xl border border-slate-300 py-4 pl-5 pr-32 text-sm shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500"
+          required
         />
-        <button type="submit" className="absolute right-2 top-2 bottom-2 px-6 bg-sky-600 hover:bg-sky-700 text-white font-medium rounded-xl text-sm flex items-center space-x-1">
-          <Search className="w-4 h-4" /> <span>Tra cứu</span>
+        <button
+          type="submit"
+          disabled={isLoading || !searchKey.trim()}
+          className="absolute bottom-2 right-2 top-2 flex items-center space-x-1.5 rounded-xl bg-sky-600 px-6 text-sm font-semibold text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Search className="h-4 w-4" />
+          <span>{isLoading ? 'Đang tìm...' : 'Tra cứu'}</span>
         </button>
       </form>
 
       {hasSearched && (
         searchResult ? (
-          <div className="bg-white rounded-3xl p-6 border border-emerald-200 shadow-sm">
-            <div className="flex justify-between items-start pb-4 border-b border-slate-100">
+          <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
-                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">Trúng Tuyển Chính Thức</span>
-                <h3 className="text-xl font-bold text-slate-800 mt-2">{searchResult.name}</h3>
+                <p className="text-xs uppercase font-medium text-slate-400">Họ và tên thí sinh</p>
+                <h3 className="mt-0.5 text-2xl font-bold text-slate-800">{searchResult.name}</h3>
+                <p className="mt-1 text-xs text-slate-500">Đợt xét tuyển: <strong className="text-slate-700">{searchResult.campaign}</strong></p>
               </div>
-              <p className="font-mono font-bold text-slate-700 text-sm">{searchResult.id}</p>
+              <div className="text-right">
+                <span className="rounded-lg bg-slate-100 px-3 py-1 font-mono text-sm font-bold text-slate-700">
+                  {searchResult.id}
+                </span>
+              </div>
             </div>
-            <div className="my-4 text-sm space-y-1">
-              <p><span className="text-slate-400">Ngành:</span> <strong className="text-slate-700">{searchResult.major}</strong></p>
-              <p><span className="text-slate-400">CCCD:</span> <strong className="text-slate-700">{searchResult.idCard}</strong></p>
+
+            <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                <p className="text-xs text-slate-500">Số CCCD / ĐDCN</p>
+                <p className="font-semibold text-slate-800">{searchResult.idCard}</p>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                <p className="text-xs text-slate-500">Số điện thoại / Email</p>
+                <p className="font-semibold text-slate-800">{searchResult.phone} · {searchResult.email}</p>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                <p className="text-xs text-slate-500">Trạng thái duyệt hồ sơ</p>
+                <div className="mt-1">{getReviewBadge(searchResult.reviewStatus)}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                <p className="text-xs text-slate-500">Kết quả trúng tuyển</p>
+                <p className="mt-1">
+                  {searchResult.admissionStatus === 'Đã nhập học' || searchResult.admissionStatus === 'Trúng tuyển' ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+                      <UserCheck className="h-3.5 w-3.5" /> {searchResult.admissionStatus}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {searchResult.admissionStatus}
+                    </span>
+                  )}
+                </p>
+              </div>
             </div>
-            <div className="p-3 bg-sky-50 rounded-xl text-sky-800 text-xs">
-              {searchResult.note}
+
+            {searchResult.studentCode && (
+              <div className="flex items-center justify-between rounded-2xl border border-emerald-300 bg-emerald-50/80 p-4 text-emerald-900">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Mã số học viên chính thức (MSHV)</p>
+                  <p className="mt-0.5 text-2xl font-black font-mono tracking-wider text-emerald-950">{searchResult.studentCode}</p>
+                </div>
+                <div className="rounded-xl bg-emerald-200/70 px-3 py-1.5 text-xs font-bold text-emerald-900">
+                  Đã công nhận học viên AGU
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4 text-xs text-sky-900">
+              <p className="font-semibold text-sky-800">Lời dặn từ Ban Tuyển sinh:</p>
+              <p className="mt-1 leading-relaxed text-slate-600">{searchResult.note}</p>
             </div>
           </div>
         ) : (
-          <div className="text-center p-8 bg-white rounded-2xl border border-slate-200 text-slate-500">
-            <p className="font-medium text-rose-600">Không tìm thấy thông tin hồ sơ!</p>
-            <p className="text-xs mt-1 text-slate-400">Vui lòng kiểm tra lại số CCCD hoặc mã hồ sơ dự tuyển.</p>
+          <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center text-slate-600 shadow-sm">
+            <XCircle className="mx-auto h-12 w-12 text-rose-500" />
+            <p className="mt-3 text-base font-semibold text-rose-700">
+              {errorMessage || 'Không tìm thấy thông tin hồ sơ!'}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Vui lòng kiểm tra lại số CCCD hoặc mã hồ sơ dự tuyển đã nhận khi nộp trực tuyến.
+            </p>
           </div>
         )
       )}

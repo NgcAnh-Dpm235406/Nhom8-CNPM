@@ -201,3 +201,156 @@ export interface Milestone {
   alertLevel: ProgressLevel;
   note?: string;
 }
+
+export interface ThesisMilestoneSubmission {
+  submission_id: number;
+  stage_name: string;
+  report_file_url: string;
+  deadline: string;
+  submitted_at: string | null;
+  lecturer_feedback: string | null;
+  color_warning: 'green' | 'yellow' | 'red';
+  status: 'Chờ đánh giá' | 'Đạt' | 'Cần sửa đổi';
+}
+
+export interface TurnitinCheckRecord {
+  check_id: number;
+  file_url: string;
+  similarity_score: number;
+  status: 'Đạt' | 'Cảnh báo' | 'Không đạt';
+  checked_at: string;
+}
+
+export interface PublicationRecord {
+  publication_id: number;
+  paper_title: string;
+  journal_name: string;
+  issn_isbn: string | null;
+  paper_url: string | null;
+  ranking: string;
+  points: number;
+  evidence_file: string;
+  status: string;
+  admin_note: string | null;
+}
+
+export interface LanguageCertRecord {
+  cert_id: number;
+  cert_type: string;
+  score_achieved: string;
+  issue_date: string;
+  expiry_date: string | null;
+  certificate_file_url: string;
+  status: string;
+}
+
+export interface GatekeeperCheckResult {
+  success: boolean;
+  studentId: number;
+  isEligible: boolean;
+  message: string;
+  statusBadge: string;
+}
+
+export interface CourseClassRecord {
+  class_id: number;
+  class_name: string;
+  max_students: number;
+  status: string;
+  course_id: number;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  semester_name: string;
+  registered_count: number;
+}
+
+export interface StudentRegisteredCourse {
+  registration_id: number;
+  registered_at: string;
+  class_name: string;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  semester_name: string;
+  room_name: string | null;
+  day_of_week: number | null;
+  start_shift: number | null;
+  end_shift: number | null;
+  lecturer_name: string | null;
+}
+
+export interface StudentGradeRecord {
+  grade_id: number;
+  process_grade: number | null;
+  exam_grade: number | null;
+  final_grade: number | null;
+  is_locked: boolean;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  semester_name: string;
+}
+
+export interface StudentTuitionRecord {
+  tuition_id: number;
+  base_amount: number;
+  due_date: string;
+  paid_amount: number;
+  late_penalty_fee: number;
+  outstanding_balance: number;
+  status: string;
+  semester_name: string;
+}
+
+export interface FacultySubmissionRecord {
+  submission_id: number;
+  thesis_id: number;
+  stage_name: string;
+  report_file_url: string;
+  deadline: string;
+  submitted_at: string | null;
+  lecturer_feedback: string | null;
+  color_warning: 'green' | 'yellow' | 'red';
+  submission_status: 'Chờ đánh giá' | 'Đạt' | 'Cần sửa đổi';
+  thesis_title: string;
+  student_id: number;
+  student_code: string;
+  student_name: string;
+  student_email: string;
+  student_phone: string;
+}
+
+export interface LecturerCommitteeRecord {
+  committee_id: number;
+  committee_name: string;
+  defense_date: string;
+  defense_room: string;
+  my_role: string;
+  defense_schedule_id: number;
+  defense_order: number;
+  start_time: string;
+  average_score: number | null;
+  defense_result: string | null;
+  thesis_id: number;
+  thesis_title: string;
+  student_code: string;
+  student_name: string;
+  content_score: number | null;
+  presentation_score: number | null;
+  qa_score: number | null;
+  total_score: number | null;
+  my_feedback: string | null;
+}
+
+export interface CurriculumCourseItem {
+  curriculum_course_id: number;
+  course_type: 'Bắt buộc' | 'Tự chọn';
+  recommended_semester: number;
+  course_id: number;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  prerequisite_code: string | null;
+  prerequisite_name: string | null;
+}

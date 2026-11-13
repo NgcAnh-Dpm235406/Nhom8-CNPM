@@ -20,6 +20,7 @@ router.post('/submit-publication', verifyToken, requireRoles('STUDENT'), upload.
 router.post('/submit-certificate', verifyToken, requireRoles('STUDENT'), upload.single('certificate_file'), thesisController.submitLanguageCertificate);
 
 // Giảng viên đánh giá
+router.get('/faculty/submissions', verifyToken, requireRoles('LECTURER', 'ADMIN'), thesisController.getFacultySubmissions);
 router.put('/evaluate-submission/:id', verifyToken, requireRoles('LECTURER', 'ADMIN'), thesisController.evaluateSubmission);
 
 module.exports = router;

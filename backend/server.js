@@ -66,7 +66,7 @@ initSocketHandler(io);
 initDeadlineReminderCron();
 
 // Phục vụ giao diện frontend
-const frontendDistPath = path.join(__dirname, '../agu-postgrad-frontend/dist');
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendDistPath));
 
 app.get('/{*path}', (req, res, next) => {

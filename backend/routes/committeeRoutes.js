@@ -11,6 +11,7 @@ router.get('/gatekeeper-check/:studentId', verifyToken, committeeController.chec
 router.post('/create', verifyToken, requireRoles('ADMIN'), committeeController.createCommittee);
 router.post('/schedule', verifyToken, requireRoles('ADMIN'), committeeController.scheduleDefense);
 router.get('/schedules', verifyToken, committeeController.getDefenseSchedules);
+router.get('/my-committees', verifyToken, requireRoles('LECTURER', 'ADMIN'), committeeController.getMyCommittees);
 router.put('/:id', verifyToken, requireRoles('ADMIN'), committeeController.updateCommittee);
 router.delete('/:id', verifyToken, requireRoles('ADMIN'), committeeController.deleteCommittee);
 

@@ -629,3 +629,49 @@ exports.evaluateSubmission = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+// 11. Giảng viên xem danh sách các báo cáo tiến độ cần đánh giá (GET /api/thesis/faculty/submissions)
+exports.getFacultySubmissions = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const lecturerId = req.user.role_code === 'ADMIN' && req.query.lecturerId
+            ? req.query.lecturerId
+            : await resolveLecturerId(pool, req.user);
+
+        if (!lecturerId) {
+            return res.status(400).json({ success: false, message: 'Thiếu mã giảng viên!' });
+        }
+
+        const result = await pool.request()
+            .input('lecId', sql.Int, lecturerId)
+            .query(`
+                SELECT 
+                    ts.submission_id,
+                    ts.thesis_id,
+                    ts.stage_name,
+                    ts.report_file_url,
+                    ts.deadline,
+                    ts.submitted_at,
+                    ts.lecturer_feedback,
+                    ts.color_warning,
+                    ts.status AS submission_status,
+                    tp.thesis_title,
+                    s.student_id,
+                    s.student_code,
+                    p.full_name AS student_name,
+                    p.email AS student_email,
+                    p.phone AS student_phone
+                FROM thesis_submissions ts
+                JOIN thesis_progress tp ON ts.thesis_id = tp.thesis_id
+                JOIN students s ON tp.student_id = s.student_id
+                JOIN admission_profiles p ON s.profile_id = p.profile_id
+                JOIN advisor_assignments aa ON s.student_id = aa.student_id
+                WHERE aa.lecturer_id = @lecId AND aa.status = N'Đang hướng dẫn'
+                ORDER BY ts.submitted_at DESC, ts.deadline ASC
+            `);
+
+        res.json({ success: true, submissions: result.recordset });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};

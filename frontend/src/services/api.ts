@@ -2,16 +2,28 @@ import type {
   AdminCommitteeRecord,
   AdmissionProfile,
   AuthUser,
+  CourseClassRecord,
+  CurriculumCourseItem,
   DefenseCandidate,
   DefenseEvaluationInput,
   DefenseEvaluationRecord,
   FacultyAdvisorDashboard,
+  FacultySubmissionRecord,
+  GatekeeperCheckResult,
+  LanguageCertRecord,
   Lecturer,
+  LecturerCommitteeRecord,
   LecturerInput,
   LecturerStudent,
+  PublicationRecord,
   StudentAdvisor,
+  StudentGradeRecord,
   StudentInfo,
-  StudentThesisProgress
+  StudentRegisteredCourse,
+  StudentThesisProgress,
+  StudentTuitionRecord,
+  ThesisMilestoneSubmission,
+  TurnitinCheckRecord
 } from '../types';
 
 const BASE_URL = '/api';
@@ -108,11 +120,11 @@ export const api = {
     getCurriculums: (majorId?: number) =>
       request(`/academic/curriculums${majorId ? `?majorId=${majorId}` : ''}`),
     getCurriculumCourses: (curriculumId: number | string) =>
-      request(`/academic/curriculums/${curriculumId}/courses`),
+      request<{ success: boolean; courses: CurriculumCourseItem[] }>(`/academic/curriculums/${curriculumId}/courses`),
     getLecturers: () => request<{ success: boolean; lecturers: Lecturer[] }>('/academic/lecturers'),
-    getSemesters: () => request('/academic/semesters'),
+    getSemesters: () => request<{ success: boolean; semesters: { semester_id: number; semester_name: string; start_date: string; end_date: string; is_grade_locked: boolean }[] }>('/academic/semesters'),
     getClasses: (semesterId?: number) =>
-      request(`/academic/classes${semesterId ? `?semesterId=${semesterId}` : ''}`)
+      request<{ success: boolean; classes: CourseClassRecord[] }>(`/academic/classes${semesterId ? `?semesterId=${semesterId}` : ''}`)
   },
 
   admin: {
@@ -158,14 +170,19 @@ export const api = {
         body: JSON.stringify(body)
       }),
     getTuition: (studentId?: number | string) =>
-      request(`/students/tuition${studentId ? `?studentId=${studentId}` : ''}`),
+      request<{ success: boolean; totalDebt: number; tuitionList: StudentTuitionRecord[] }>(
+        `/students/tuition${studentId ? `?studentId=${studentId}` : ''}`
+      ),
     payTuition: (tuitionId: number | string, amount: number) =>
-      request('/students/tuition/pay', { method: 'POST', body: JSON.stringify({ tuitionId, amount }) }),
+      request<{ success: boolean; message: string; newStatus: string; newPaid: number }>(
+        '/students/tuition/pay',
+        { method: 'POST', body: JSON.stringify({ tuitionId, amount }) }
+      ),
     registerCourse: (classId: number) =>
-      request('/students/register-course', { method: 'POST', body: JSON.stringify({ classId }) }),
-    getSchedule: () => request('/students/schedule'),
+      request<{ success: boolean; message: string }>('/students/register-course', { method: 'POST', body: JSON.stringify({ classId }) }),
+    getSchedule: () => request<{ success: boolean; courses: StudentRegisteredCourse[] }>('/students/schedule'),
     getGrades: (studentId?: number | string) =>
-      request(`/students/grades${studentId ? `?studentId=${studentId}` : ''}`),
+      request<{ success: boolean; grades: StudentGradeRecord[] }>(`/students/grades${studentId ? `?studentId=${studentId}` : ''}`),
     enterGrades: (body: { gradeId: number | string; processGrade?: number; examGrade?: number }) =>
       request('/students/enter-grades', { method: 'PUT', body: JSON.stringify(body) })
   },
@@ -177,6 +194,10 @@ export const api = {
     getFacultyAdvisingRequests: (lecturerId?: number) =>
       request<{ success: boolean } & FacultyAdvisorDashboard>(
         `/thesis/faculty/advising-requests${lecturerId ? `?lecturerId=${lecturerId}` : ''}`
+      ),
+    getFacultySubmissions: (lecturerId?: number) =>
+      request<{ success: boolean; submissions: FacultySubmissionRecord[] }>(
+        `/thesis/faculty/submissions${lecturerId ? `?lecturerId=${lecturerId}` : ''}`
       ),
     respondAdvisingRequest: (id: number | string, action: 'accept' | 'reject') =>
       request<{ success: boolean; message: string }>(
@@ -190,23 +211,29 @@ export const api = {
         success: boolean;
         thesis: StudentThesisProgress | null;
         advisor: StudentAdvisor | null;
+        milestones: ThesisMilestoneSubmission[];
+        turnitin: TurnitinCheckRecord | null;
+        publications: PublicationRecord[];
+        languageCerts: LanguageCertRecord[];
       }>(`/thesis/my-progress${studentId ? `?studentId=${studentId}` : ''}`),
     submitReport: (formData: FormData) =>
-      request('/thesis/submit-report', { method: 'POST', body: formData }),
+      request<{ success: boolean; message: string; fileUrl: string }>('/thesis/submit-report', { method: 'POST', body: formData }),
     submitTurnitin: (formData: FormData) =>
-      request('/thesis/submit-turnitin', { method: 'POST', body: formData }),
+      request<{ success: boolean; message: string; data: { score: number; status: string; fileUrl: string } }>('/thesis/submit-turnitin', { method: 'POST', body: formData }),
     submitPublication: (formData: FormData) =>
-      request('/thesis/submit-publication', { method: 'POST', body: formData }),
+      request<{ success: boolean; message: string }>('/thesis/submit-publication', { method: 'POST', body: formData }),
     submitCertificate: (formData: FormData) =>
-      request('/thesis/submit-certificate', { method: 'POST', body: formData }),
+      request<{ success: boolean; message: string }>('/thesis/submit-certificate', { method: 'POST', body: formData }),
     evaluateSubmission: (id: number | string, body: { feedback?: string; status: 'Đạt' | 'Cần sửa đổi' }) =>
-      request(`/thesis/evaluate-submission/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+      request<{ success: boolean; message: string }>(`/thesis/evaluate-submission/${id}`, { method: 'PUT', body: JSON.stringify(body) })
   },
 
   // 6. Phân hệ Hội đồng & Gatekeeper
   committee: {
     checkGatekeeper: (studentId?: number | string) =>
-      request(`/committee/gatekeeper-check${studentId ? `/${studentId}` : ''}`),
+      request<GatekeeperCheckResult>(`/committee/gatekeeper-check${studentId ? `/${studentId}` : ''}`),
+    getMyCommittees: () =>
+      request<{ success: boolean; committees: LecturerCommitteeRecord[] }>('/committee/my-committees'),
     createCommittee: (body: {
       committeeName: string;
       defenseDate: string;
