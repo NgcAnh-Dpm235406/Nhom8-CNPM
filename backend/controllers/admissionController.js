@@ -1,6 +1,32 @@
 const { sql, poolPromise, writeAuditLog } = require('../config/db');
 const bcrypt = require('bcryptjs');
 
+function getStudentUsernameBase(fullName) {
+    const nameParts = String(fullName || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/gi, 'd')
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean);
+    const namePart = nameParts.slice(-2).join('');
+    if (!namePart) throw new Error('Không thể tạo tên đăng nhập từ họ tên học viên.');
+    return `hv_${namePart}`.slice(0, 100);
+}
+
+async function getUniqueStudentUsername(transaction, fullName) {
+    const base = getStudentUsernameBase(fullName);
+    for (let suffix = 1; suffix < Number.MAX_SAFE_INTEGER; suffix += 1) {
+        const suffixPart = suffix === 1 ? '' : `_${suffix}`;
+        const username = `${base.slice(0, 100 - suffixPart.length)}${suffixPart}`;
+        const existing = await transaction.request()
+            .input('username', sql.VarChar(100), username)
+            .query('SELECT TOP (1) user_id FROM users WITH (UPDLOCK, HOLDLOCK) WHERE username = @username');
+        if (existing.recordset.length === 0) return username;
+    }
+    throw new Error('Không thể tạo tên đăng nhập duy nhất cho học viên.');
+}
+
 // 1. Lấy danh sách đợt tuyển sinh đang mở (GET /api/admission/campaigns)
 exports.getCampaigns = async (req, res) => {
     try {
@@ -384,7 +410,7 @@ exports.admitCandidate = async (req, res) => {
         const studentCode = `${yearPrefix}${String(profileNumber).padStart(6, '0')}`;
 
         // 3. Tạo tài khoản User (Role STUDENT = 3)
-        const username = `hv_${candidate.id_card_number.slice(-6)}`;
+        const username = await getUniqueStudentUsername(transaction, candidate.full_name);
         const defaultPassword = 'AGU@' + candidate.id_card_number.slice(-4);
         const passwordHash = await bcrypt.hash(defaultPassword, 10);
 

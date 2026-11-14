@@ -1,6 +1,7 @@
 import type {
   AdminCommitteeRecord,
   AdminOverviewData,
+  AdminStudent,
   AdmissionCampaign,
   AdmissionLookupResult,
   AdmissionProfile,
@@ -147,6 +148,24 @@ export const api = {
 
   admin: {
     getOverviewStats: () => request<{ success: boolean; data: AdminOverviewData }>('/admin/overview-stats'),
+    getStudents: () => request<{ success: boolean; message?: string; students: AdminStudent[] }>('/admin/students'),
+    updateStudentAcademicStatus: (studentId: number | string, academicStatus: string) =>
+      request<{ success: boolean; message: string }>(`/admin/students/${studentId}/academic-status`, {
+        method: 'PUT',
+        body: JSON.stringify({ academicStatus })
+      }),
+    updateStudentAccountStatus: (studentId: number | string, status: 'Active' | 'Inactive') =>
+      request<{ success: boolean; message: string }>(`/admin/students/${studentId}/account-status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status })
+      }),
+    resetStudentPassword: (studentId: number | string) =>
+      request<{
+        success: boolean;
+        message: string;
+        temporaryPassword: string;
+        studentInfo: { studentCode: string; fullName: string; username: string };
+      }>(`/admin/students/${studentId}/reset-password`, { method: 'POST' }),
     getLecturers: () => request<{ success: boolean; lecturers: Lecturer[] }>('/admin/lecturers'),
     getLecturerStudents: (lecturerId: number) =>
       request<{ success: boolean; students: LecturerStudent[] }>(`/admin/lecturers/${lecturerId}/students`),

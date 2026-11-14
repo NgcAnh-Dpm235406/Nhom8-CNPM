@@ -1,4 +1,4 @@
-export type AdminSection = 'overview' | 'admissions' | 'committees' | 'lecturers';
+export type AdminSection = 'overview' | 'students' | 'admissions' | 'committees' | 'lecturers';
 export type TabType =
   | 'home'
   | 'register'
@@ -7,6 +7,7 @@ export type TabType =
   | 'student-profile'
   | 'faculty'
   | 'admin-overview'
+  | 'admin-students'
   | 'admin-admissions'
   | 'admin-committees'
   | 'admin-lecturers'
@@ -462,3 +463,35 @@ export interface AdminOverviewData {
   pendingDefenseCandidates: AdminOverviewPendingDefenseCandidate[];
   recentLogs: AdminOverviewRecentLog[];
 }
+
+export interface AdminStudent {
+  student_id: number | string;
+  student_code: string;
+  academic_status: 'Đang học' | 'Bảo lưu' | 'Đã tốt nghiệp' | 'Buộc thôi học' | 'Đình chỉ' | string;
+  enrollment_date: string | null;
+  profile_id: number | string;
+  full_name: string;
+  dob: string | null;
+  id_card_number: string;
+  phone: string;
+  email: string;
+  address: string | null;
+  undergrad_degree_file: string | null;
+  user_id: number | string;
+  username: string;
+  account_status: 'Active' | 'Inactive' | string;
+  cohort: string;
+  orientation: string;
+  total_credits: number;
+  major_id: number;
+  major_code: string;
+  major_name: string;
+  lecturer_name: string | null;
+  lecturer_degree: string | null;
+  thesis_id: number | string | null;
+  thesis_title: string | null;
+  current_stage: string | null;
+  progress_percent: number | null;
+  thesis_status: string | null;
+}
+

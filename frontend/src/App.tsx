@@ -22,6 +22,7 @@ const isRoleCode = (value: unknown): value is RoleCode =>
 
 const adminSections: Partial<Record<TabType, AdminSection>> = {
   'admin-overview': 'overview',
+  'admin-students': 'students',
   'admin-admissions': 'admissions',
   'admin-committees': 'committees',
   'admin-lecturers': 'lecturers'
@@ -77,7 +78,7 @@ export default function App() {
       ? ['home', 'student', 'student-profile']
       : session.user.roleCode === 'LECTURER'
         ? ['home', 'faculty']
-        : ['home', 'admin-overview', 'admin-admissions', 'admin-committees', 'admin-lecturers']
+        : ['home', 'admin-overview', 'admin-students', 'admin-admissions', 'admin-committees', 'admin-lecturers']
     : ['home', 'register', 'lookup', 'login'];
 
   const handleNavigate = (tab: TabType, majorCode?: string) => {

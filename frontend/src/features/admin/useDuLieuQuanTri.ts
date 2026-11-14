@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import type {
   AdminCommitteeRecord,
   AdminOverviewData,
+  AdminStudent,
   AdmissionProfile,
   DefenseCandidate,
   DefenseEvaluationInput,
@@ -113,6 +114,10 @@ const fetchAdminData = async () => {
 export const useAdminDashboard = () => {
   const [overviewData, setOverviewData] = useState<AdminOverviewData | null>(null);
   const [isLoadingOverview, setIsLoadingOverview] = useState(false);
+  const [overviewError, setOverviewError] = useState('');
+  const [students, setStudents] = useState<AdminStudent[]>([]);
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [studentsError, setStudentsError] = useState('');
   const [profiles, setProfiles] = useState<AdmissionProfile[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
   const [committeeRecords, setCommitteeRecords] = useState<AdminCommitteeRecord[]>([]);
@@ -177,15 +182,94 @@ export const useAdminDashboard = () => {
 
   const loadOverview = async () => {
     setIsLoadingOverview(true);
+    setOverviewError('');
     try {
       const res = await api.admin.getOverviewStats();
-      if (res.success && res.data) {
-        setOverviewData(res.data);
-      }
+      if (!res.success || !res.data) throw new Error('API không trả về dữ liệu thống kê tổng quan.');
+      setOverviewData(res.data);
     } catch (err) {
       console.error('Không thể tải số liệu tổng quan:', err);
+      setOverviewError(err instanceof Error ? err.message : 'Không thể tải số liệu tổng quan.');
     } finally {
       setIsLoadingOverview(false);
+    }
+  };
+
+  const loadStudents = async () => {
+    setIsLoadingStudents(true);
+    setStudentsError('');
+    try {
+      const res = await api.admin.getStudents();
+      if (!res.success || !Array.isArray(res.students)) {
+        throw new Error(res.message || 'Máy chủ không trả về danh sách học viên.');
+      }
+      setStudents(res.students);
+    } catch (err) {
+      console.error('Không thể tải danh sách học viên:', err);
+      setStudentsError(err instanceof Error ? err.message : 'Không thể tải danh sách học viên.');
+    } finally {
+      setIsLoadingStudents(false);
+    }
+  };
+
+  const handleUpdateStudentAcademicStatus = async (studentId: number | string, academicStatus: string) => {
+    try {
+      const res = await api.admin.updateStudentAcademicStatus(studentId, academicStatus);
+      if (res.success) {
+        setNotice(res.message);
+        setStudents(prev =>
+          prev.map(s => (String(s.student_id) === String(studentId) ? { ...s, academic_status: academicStatus } : s))
+        );
+        void loadOverview();
+        return true;
+      }
+      setActionError(res.message || 'Không thể cập nhật trạng thái học vụ.');
+      return false;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Lỗi cập nhật trạng thái học vụ.';
+      setActionError(msg);
+      return false;
+    }
+  };
+
+  const handleToggleStudentAccountStatus = async (studentId: number | string, currentStatus: string) => {
+    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    try {
+      const res = await api.admin.updateStudentAccountStatus(studentId, newStatus);
+      if (res.success) {
+        setNotice(res.message);
+        setStudents(prev =>
+          prev.map(s => (String(s.student_id) === String(studentId) ? { ...s, account_status: newStatus } : s))
+        );
+        return true;
+      }
+      setActionError(res.message || 'Không thể thay đổi trạng thái tài khoản.');
+      return false;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Lỗi thay đổi trạng thái tài khoản.';
+      setActionError(msg);
+      return false;
+    }
+  };
+
+  const handleResetStudentPassword = async (studentId: number | string) => {
+    try {
+      const res = await api.admin.resetStudentPassword(studentId);
+      if (res.success) {
+        setIssuedAccount({
+          fullName: res.studentInfo.fullName,
+          studentCode: res.studentInfo.studentCode,
+          username: res.studentInfo.username,
+          temporaryPassword: res.temporaryPassword
+        });
+        return res.temporaryPassword;
+      }
+      setActionError(res.message || 'Không thể đặt lại mật khẩu.');
+      return null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Lỗi đặt lại mật khẩu.';
+      setActionError(msg);
+      return null;
     }
   };
 
@@ -193,7 +277,7 @@ export const useAdminDashboard = () => {
     setIsLoading(true);
     setLoadError('');
     try {
-      const [data] = await Promise.all([fetchAdminData(), loadOverview()]);
+      const [data] = await Promise.all([fetchAdminData(), loadOverview(), loadStudents()]);
       setProfiles(data.profiles);
       setLecturers(data.lecturers);
       setCommitteeRecords(data.committees);
@@ -207,7 +291,12 @@ export const useAdminDashboard = () => {
 
   useEffect(() => {
     let isCurrent = true;
-    void loadOverview();
+    void Promise.resolve().then(() => {
+      if (isCurrent) {
+        void loadOverview();
+        void loadStudents();
+      }
+    });
     void fetchAdminData()
       .then(data => {
         if (!isCurrent) return;
@@ -726,7 +815,16 @@ export const useAdminDashboard = () => {
     overviewData,
     setOverviewData,
     isLoadingOverview,
-    loadOverview
+    overviewError,
+    loadOverview,
+    students,
+    setStudents,
+    isLoadingStudents,
+    studentsError,
+    loadStudents,
+    handleUpdateStudentAcademicStatus,
+    handleToggleStudentAccountStatus,
+    handleResetStudentPassword
   };
 };
 

@@ -6,6 +6,10 @@ const router = express.Router();
 
 router.use(verifyToken, requireRoles('ADMIN'));
 router.get('/overview-stats', adminController.getOverviewStats);
+router.get('/students', adminController.getStudents);
+router.put('/students/:id/academic-status', adminController.updateStudentAcademicStatus);
+router.put('/students/:id/account-status', adminController.updateStudentAccountStatus);
+router.post('/students/:id/reset-password', adminController.resetStudentPassword);
 router.get('/lecturers', adminController.getLecturers);
 router.get('/lecturers/:id/students', adminController.getLecturerStudents);
 router.get('/committees', adminController.getCommittees);

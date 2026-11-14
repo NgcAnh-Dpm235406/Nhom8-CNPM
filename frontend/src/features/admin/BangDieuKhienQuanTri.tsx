@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, CheckCircle2, Clipboard, X } from 'lucide-react';
 import { MucTongQuan } from './MucTongQuan';
+import { MucHocVien } from './MucHocVien';
 import { AdmissionsSection } from './MucTuyenSinh';
 import { CommitteesSection } from './MucHoiDong';
 import { LecturersSection } from './MucGiangVien';
@@ -25,20 +26,24 @@ export const AdminDashboard = ({ section, onNavigateTab }: AdminDashboardProps) 
   const sectionTitle =
     section === 'overview'
       ? 'Tổng quan hệ thống đào tạo'
-      : section === 'admissions'
-        ? 'Quản lý tuyển sinh'
-        : section === 'committees'
-          ? 'Thành lập hội đồng'
-          : 'Quản lý giảng viên';
+      : section === 'students'
+        ? 'Quản lý học viên cao học'
+        : section === 'admissions'
+          ? 'Quản lý tuyển sinh'
+          : section === 'committees'
+            ? 'Thành lập hội đồng'
+            : 'Quản lý giảng viên';
 
   const sectionDescription =
     section === 'overview'
       ? 'Báo cáo số liệu tổng quan, phân tích tuyển sinh, học viên, giảng viên và các hoạt động sau đại học.'
-      : section === 'admissions'
-        ? 'Xem, xét duyệt hồ sơ dự tuyển và công nhận trúng tuyển.'
-        : section === 'committees'
-          ? 'Thành lập hội đồng bảo vệ luận văn với 5 giảng viên.'
-          : 'Xem thông tin, thêm mới, cập nhật và xóa tài khoản giảng viên.';
+      : section === 'students'
+        ? ''
+        : section === 'admissions'
+          ? 'Xem, xét duyệt hồ sơ dự tuyển và công nhận trúng tuyển.'
+          : section === 'committees'
+            ? 'Thành lập hội đồng bảo vệ luận văn với 5 giảng viên.'
+            : 'Xem thông tin, thêm mới, cập nhật và xóa tài khoản giảng viên.';
 
   const copyCredentials = async () => {
     if (!issuedAccount) return;
@@ -67,7 +72,7 @@ export const AdminDashboard = ({ section, onNavigateTab }: AdminDashboardProps) 
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">Phòng Sau Đại học</p>
               <h1 className="mt-1 text-3xl font-bold text-slate-900">{sectionTitle}</h1>
-              <p className="mt-2 text-slate-600">{sectionDescription}</p>
+              {sectionDescription && <p className="mt-2 text-slate-600">{sectionDescription}</p>}
             </div>
           </div>
         </div>
@@ -149,6 +154,8 @@ export const AdminDashboard = ({ section, onNavigateTab }: AdminDashboardProps) 
 
       {section === 'overview' ? (
         <MucTongQuan dashboard={dashboard} onNavigateTab={onNavigateTab} />
+      ) : section === 'students' ? (
+        <MucHocVien dashboard={dashboard} />
       ) : section === 'admissions' ? (
         <AdmissionsSection dashboard={dashboard} />
       ) : section === 'committees' ? (

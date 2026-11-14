@@ -649,3 +649,179 @@ exports.getOverviewStats = async (req, res) => {
         return sendDatabaseError(res, err);
     }
 };
+
+exports.getStudents = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request().query(`
+            SELECT s.student_id, s.student_code, s.academic_status, s.enrollment_date,
+                   p.profile_id, p.full_name, p.dob, p.id_card_number, p.phone, p.email, p.address, p.undergrad_degree_file,
+                   u.user_id, u.username, u.status AS account_status,
+                   c.cohort, c.orientation, c.total_credits,
+                   m.major_id, m.major_code, m.major_name,
+                   adv.lecturer_name, adv.lecturer_degree,
+                   tp.thesis_id, tp.thesis_title, tp.current_stage, tp.progress_percent, tp.status AS thesis_status
+            FROM students s
+            JOIN users u ON u.user_id = s.user_id
+            JOIN admission_profiles p ON p.profile_id = s.profile_id
+            JOIN curriculums c ON c.curriculum_id = s.curriculum_id
+            JOIN majors m ON m.major_id = c.major_id
+            LEFT JOIN (
+                SELECT aa.student_id, l.full_name AS lecturer_name, l.degree AS lecturer_degree
+                FROM advisor_assignments aa
+                JOIN lecturers l ON l.lecturer_id = aa.lecturer_id
+                WHERE aa.status = N'Đang hướng dẫn'
+            ) adv ON adv.student_id = s.student_id
+            LEFT JOIN thesis_progress tp ON tp.student_id = s.student_id
+            ORDER BY s.student_code ASC
+        `);
+        return res.json({ success: true, students: result.recordset });
+    } catch (err) {
+        console.error('Lỗi tải danh sách học viên:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi máy chủ khi tải danh sách học viên.'
+        });
+    }
+};
+
+exports.updateStudentAcademicStatus = async (req, res) => {
+    const studentId = Number(req.params.id);
+    if (!Number.isSafeInteger(studentId) || studentId <= 0) {
+        return res.status(400).json({ success: false, message: 'Mã học viên không hợp lệ.' });
+    }
+    const { academicStatus } = req.body;
+    const validStatuses = ['Đang học', 'Bảo lưu', 'Đã tốt nghiệp', 'Buộc thôi học', 'Đình chỉ'];
+    if (!academicStatus || !validStatuses.includes(academicStatus)) {
+        return res.status(400).json({
+            success: false,
+            message: `Trạng thái học vụ không hợp lệ. Phải là một trong: ${validStatuses.join(', ')}.`
+        });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const currentStudent = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query('SELECT student_id, academic_status, student_code FROM students WHERE student_id = @studentId');
+
+        if (!currentStudent.recordset.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ học viên.' });
+        }
+
+        const oldStatus = currentStudent.recordset[0].academic_status;
+
+        await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .input('academicStatus', sql.NVarChar(50), academicStatus)
+            .query('UPDATE students SET academic_status = @academicStatus WHERE student_id = @studentId');
+
+        await writeAuditLog(req.user.user_id, 'UPDATE_STUDENT_ACADEMIC_STATUS', 'students', studentId,
+            { academic_status: oldStatus },
+            { academic_status: academicStatus },
+            req.ip
+        );
+
+        return res.json({
+            success: true,
+            message: `Đã cập nhật trạng thái học vụ thành "${academicStatus}".`
+        });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+exports.updateStudentAccountStatus = async (req, res) => {
+    const studentId = Number(req.params.id);
+    if (!Number.isSafeInteger(studentId) || studentId <= 0) {
+        return res.status(400).json({ success: false, message: 'Mã học viên không hợp lệ.' });
+    }
+    const { status } = req.body;
+    if (status !== 'Active' && status !== 'Inactive') {
+        return res.status(400).json({ success: false, message: 'Trạng thái tài khoản phải là Active hoặc Inactive.' });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const currentStudent = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query('SELECT s.student_id, s.user_id, u.status FROM students s JOIN users u ON u.user_id = s.user_id WHERE s.student_id = @studentId');
+
+        if (!currentStudent.recordset.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy học viên.' });
+        }
+
+        const userId = currentStudent.recordset[0].user_id;
+        const oldStatus = currentStudent.recordset[0].status;
+
+        await pool.request()
+            .input('userId', sql.BigInt, userId)
+            .input('status', sql.VarChar(20), status)
+            .query('UPDATE users SET status = @status WHERE user_id = @userId');
+
+        await writeAuditLog(req.user.user_id, 'UPDATE_STUDENT_ACCOUNT_STATUS', 'users', userId,
+            { status: oldStatus },
+            { status },
+            req.ip
+        );
+
+        return res.json({
+            success: true,
+            message: status === 'Active' ? 'Đã kích hoạt/mở khóa tài khoản học viên.' : 'Đã tạm khóa tài khoản học viên.'
+        });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+exports.resetStudentPassword = async (req, res) => {
+    const studentId = Number(req.params.id);
+    if (!Number.isSafeInteger(studentId) || studentId <= 0) {
+        return res.status(400).json({ success: false, message: 'Mã học viên không hợp lệ.' });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const currentStudent = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT s.student_id, s.student_code, s.user_id, u.username, p.full_name
+                FROM students s
+                JOIN users u ON u.user_id = s.user_id
+                JOIN admission_profiles p ON p.profile_id = s.profile_id
+                WHERE s.student_id = @studentId
+            `);
+
+        if (!currentStudent.recordset.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy học viên.' });
+        }
+
+        const student = currentStudent.recordset[0];
+        const tempPassword = 'AGU@' + Math.random().toString(36).substring(2, 6).toUpperCase() + Math.floor(10 + Math.random() * 90);
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(tempPassword, salt);
+
+        await pool.request()
+            .input('userId', sql.BigInt, student.user_id)
+            .input('passwordHash', sql.VarChar(255), passwordHash)
+            .query('UPDATE users SET password_hash = @passwordHash WHERE user_id = @userId');
+
+        await writeAuditLog(req.user.user_id, 'RESET_STUDENT_PASSWORD', 'users', student.user_id, null, {
+            studentCode: student.student_code,
+            username: student.username
+        }, req.ip);
+
+        return res.json({
+            success: true,
+            message: `Đã cấp lại mật khẩu tạm thời cho học viên ${student.full_name}.`,
+            temporaryPassword: tempPassword,
+            studentInfo: {
+                studentCode: student.student_code,
+                fullName: student.full_name,
+                username: student.username
+            }
+        });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};

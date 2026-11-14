@@ -75,7 +75,7 @@ const formatTimeAgo = (dateStr: string) => {
 };
 
 export const MucTongQuan: React.FC<MucTongQuanProps> = ({ dashboard, onNavigateTab }) => {
-  const { overviewData, isLoadingOverview, loadOverview } = dashboard;
+  const { overviewData, isLoadingOverview, overviewError, loadOverview } = dashboard;
   const summary = overviewData?.summary;
 
   const totalCapacity = summary?.total_capacity || 0;
@@ -113,6 +113,8 @@ export const MucTongQuan: React.FC<MucTongQuanProps> = ({ dashboard, onNavigateT
         </button>
       </div>
 
+      {overviewData ? (
+      <>
       {/* 2. Top Metric KPI Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Card 1: Học viên */}
@@ -132,9 +134,13 @@ export const MucTongQuan: React.FC<MucTongQuanProps> = ({ dashboard, onNavigateT
             <span>
               Đang học: <strong className="text-emerald-600">{summary?.active_students ?? 0}</strong>
             </span>
-            <span>
-              Tốt nghiệp: <strong className="text-slate-800">{summary?.graduated_students ?? 0}</strong>
-            </span>
+            <button
+              type="button"
+              onClick={() => onNavigateTab?.('admin-students')}
+              className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-800"
+            >
+              Học viên <ArrowRight className="h-3 w-3" />
+            </button>
           </div>
         </div>
 
@@ -464,6 +470,26 @@ export const MucTongQuan: React.FC<MucTongQuanProps> = ({ dashboard, onNavigateT
           </div>
         </section>
       </div>
+      </>
+      ) : (
+        <div
+          role={overviewError ? 'alert' : 'status'}
+          className={`rounded-2xl border p-6 text-center ${
+            overviewError ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-sky-200 bg-sky-50 text-sky-800'
+          }`}
+        >
+          <p className="font-semibold">
+            {isLoadingOverview
+              ? 'Đang tải số liệu tổng quan...'
+              : overviewError || 'Chưa có dữ liệu tổng quan để hiển thị.'}
+          </p>
+          {overviewError && (
+            <p className="mt-2 text-sm">
+              Kiểm tra kết nối máy chủ, quyền ADMIN hoặc đăng nhập lại rồi nhấn “Làm mới số liệu”.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };
