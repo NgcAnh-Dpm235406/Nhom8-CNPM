@@ -11,6 +11,7 @@ router.get('/lookup', admissionController.lookupAdmission);
 
 // Admin endpoints (Dành cho Phòng Đào tạo SĐH)
 router.get('/profiles', verifyToken, requireRoles('ADMIN'), admissionController.getAllProfiles);
+router.post('/campaigns', verifyToken, requireRoles('ADMIN'), admissionController.createCampaign);
 router.put('/profiles/:id/review', verifyToken, requireRoles('ADMIN'), admissionController.reviewProfile);
 router.post('/profiles/:id/admit', verifyToken, requireRoles('ADMIN'), admissionController.admitCandidate);
 

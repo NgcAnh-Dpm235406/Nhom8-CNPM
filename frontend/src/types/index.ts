@@ -1,4 +1,4 @@
-export type AdminSection = 'admissions' | 'committees' | 'lecturers';
+export type AdminSection = 'overview' | 'admissions' | 'committees' | 'lecturers';
 export type TabType =
   | 'home'
   | 'register'
@@ -6,6 +6,7 @@ export type TabType =
   | 'student'
   | 'student-profile'
   | 'faculty'
+  | 'admin-overview'
   | 'admin-admissions'
   | 'admin-committees'
   | 'admin-lecturers'
@@ -381,4 +382,83 @@ export interface CurriculumCourseItem {
   credits: number;
   prerequisite_code: string | null;
   prerequisite_name: string | null;
+}
+
+export interface AdminOverviewSummary {
+  total_profiles: number;
+  pending_profiles: number;
+  approved_profiles: number;
+  need_supplement_profiles: number;
+  rejected_profiles: number;
+  admitted_profiles: number;
+  total_students: number;
+  active_students: number;
+  graduated_students: number;
+  total_lecturers: number;
+  total_capacity: number;
+  assigned_slots: number;
+  total_committees: number;
+  total_defense_schedules: number;
+  active_theses: number;
+}
+
+export interface AdminOverviewMajor {
+  major_id: number;
+  major_code: string;
+  major_name: string;
+  student_count: number;
+}
+
+export interface AdminOverviewStatus {
+  status: string;
+  count: number;
+}
+
+export interface AdminOverviewLecturerWorkload {
+  lecturer_id: number;
+  full_name: string;
+  degree: string;
+  max_slots: number;
+  current_assigned: number;
+  slots_left: number;
+}
+
+export interface AdminOverviewPendingProfile {
+  profile_id: number;
+  full_name: string;
+  phone: string;
+  email: string;
+  status: string;
+  created_at: string;
+  campaign_name: string | null;
+}
+
+export interface AdminOverviewPendingDefenseCandidate {
+  thesis_id: number;
+  thesis_title: string;
+  current_stage: string;
+  student_id: number;
+  student_code: string;
+  student_name: string;
+}
+
+export interface AdminOverviewRecentLog {
+  log_id: string | number;
+  user_id: number;
+  action: string;
+  table_name: string;
+  record_id: number | null;
+  created_at: string;
+  username: string | null;
+  user_display_name: string | null;
+}
+
+export interface AdminOverviewData {
+  summary: AdminOverviewSummary;
+  majors: AdminOverviewMajor[];
+  admissionStatuses: AdminOverviewStatus[];
+  lecturersWorkload: AdminOverviewLecturerWorkload[];
+  pendingProfiles: AdminOverviewPendingProfile[];
+  pendingDefenseCandidates: AdminOverviewPendingDefenseCandidate[];
+  recentLogs: AdminOverviewRecentLog[];
 }

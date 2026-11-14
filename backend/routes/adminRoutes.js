@@ -5,6 +5,7 @@ const { verifyToken, requireRoles } = require('../middlewares/authMiddleware');
 const router = express.Router();
 
 router.use(verifyToken, requireRoles('ADMIN'));
+router.get('/overview-stats', adminController.getOverviewStats);
 router.get('/lecturers', adminController.getLecturers);
 router.get('/lecturers/:id/students', adminController.getLecturerStudents);
 router.get('/committees', adminController.getCommittees);

@@ -22,6 +22,7 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, user, onLogou
         ...(user.roleCode === 'LECTURER' ? [{ tab: 'faculty' as const, label: 'Cổng Giảng Viên' }] : []),
         ...(user.roleCode === 'ADMIN'
           ? [
+              { tab: 'admin-overview' as const, label: 'Tổng quan' },
               { tab: 'admin-admissions' as const, label: 'Quản lý tuyển sinh' },
               { tab: 'admin-committees' as const, label: 'Thành lập hội đồng' },
               { tab: 'admin-lecturers' as const, label: 'Quản lý giảng viên' }

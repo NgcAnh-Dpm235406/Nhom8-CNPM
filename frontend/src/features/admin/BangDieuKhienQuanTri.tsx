@@ -1,13 +1,19 @@
 import { useState } from 'react';
 import { Check, CheckCircle2, Clipboard, X } from 'lucide-react';
+import { MucTongQuan } from './MucTongQuan';
 import { AdmissionsSection } from './MucTuyenSinh';
 import { CommitteesSection } from './MucHoiDong';
 import { LecturersSection } from './MucGiangVien';
 import { useAdminDashboard } from './useDuLieuQuanTri';
-import type { AdminSection } from '../../types';
+import type { AdminSection, TabType } from '../../types';
 import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 
-export const AdminDashboard = ({ section }: { section: AdminSection }) => {
+interface AdminDashboardProps {
+  section: AdminSection;
+  onNavigateTab?: (tab: TabType) => void;
+}
+
+export const AdminDashboard = ({ section, onNavigateTab }: AdminDashboardProps) => {
   const dashboard = useAdminDashboard();
   const { loadError, actionError, notice, issuedAccount, setIssuedAccount } = dashboard;
   const [copied, setCopied] = useState(false);
@@ -16,11 +22,23 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
   useBrowserAlert(actionError, dashboard.setActionError);
   useBrowserAlert(notice, dashboard.setNotice);
 
-  const sectionTitle = section === 'admissions'
-    ? 'Quản lý tuyển sinh'
-    : section === 'committees'
-      ? 'Thành lập hội đồng'
-      : 'Quản lý giảng viên';
+  const sectionTitle =
+    section === 'overview'
+      ? 'Tổng quan hệ thống đào tạo'
+      : section === 'admissions'
+        ? 'Quản lý tuyển sinh'
+        : section === 'committees'
+          ? 'Thành lập hội đồng'
+          : 'Quản lý giảng viên';
+
+  const sectionDescription =
+    section === 'overview'
+      ? 'Báo cáo số liệu tổng quan, phân tích tuyển sinh, học viên, giảng viên và các hoạt động sau đại học.'
+      : section === 'admissions'
+        ? 'Xem, xét duyệt hồ sơ dự tuyển và công nhận trúng tuyển.'
+        : section === 'committees'
+          ? 'Thành lập hội đồng bảo vệ luận văn với 5 giảng viên.'
+          : 'Xem thông tin, thêm mới, cập nhật và xóa tài khoản giảng viên.';
 
   const copyCredentials = async () => {
     if (!issuedAccount) return;
@@ -43,21 +61,17 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
 
   return (
     <section className="mx-auto my-8 max-w-7xl space-y-6 px-4">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">Phòng Sau Đại học</p>
-            <h1 className="mt-1 text-3xl font-bold text-slate-900">{sectionTitle}</h1>
-            <p className="mt-2 text-slate-600">
-              {section === 'admissions'
-                ? 'Xem, xét duyệt hồ sơ dự tuyển và công nhận trúng tuyển.'
-                : section === 'committees'
-                  ? 'Thành lập hội đồng bảo vệ luận văn với 5 giảng viên.'
-                  : 'Xem thông tin, thêm mới, cập nhật và xóa tài khoản giảng viên.'}
-            </p>
+      {section !== 'overview' && (
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">Phòng Sau Đại học</p>
+              <h1 className="mt-1 text-3xl font-bold text-slate-900">{sectionTitle}</h1>
+              <p className="mt-2 text-slate-600">{sectionDescription}</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {issuedAccount && (
         <div
@@ -133,7 +147,9 @@ export const AdminDashboard = ({ section }: { section: AdminSection }) => {
         </div>
       )}
 
-      {section === 'admissions' ? (
+      {section === 'overview' ? (
+        <MucTongQuan dashboard={dashboard} onNavigateTab={onNavigateTab} />
+      ) : section === 'admissions' ? (
         <AdmissionsSection dashboard={dashboard} />
       ) : section === 'committees' ? (
         <CommitteesSection dashboard={dashboard} />

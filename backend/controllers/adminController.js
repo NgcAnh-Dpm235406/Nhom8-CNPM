@@ -535,3 +535,117 @@ exports.deleteLecturer = async (req, res) => {
         return sendDatabaseError(res, err);
     }
 };
+
+exports.getOverviewStats = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+
+        // 1. Chỉ số tổng quan (KPIs)
+        const summaryResult = await pool.request().query(`
+            SELECT 
+                (SELECT COUNT(*) FROM admission_profiles) AS total_profiles,
+                (SELECT COUNT(*) FROM admission_profiles WHERE status = N'Chờ xét duyệt' OR status = N'Pending') AS pending_profiles,
+                (SELECT COUNT(*) FROM admission_profiles WHERE status = N'Đạt yêu cầu') AS approved_profiles,
+                (SELECT COUNT(*) FROM admission_profiles WHERE status = N'Cần bổ sung') AS need_supplement_profiles,
+                (SELECT COUNT(*) FROM admission_profiles WHERE status = N'Không đạt') AS rejected_profiles,
+                (SELECT COUNT(*) FROM admission_profiles WHERE admission_status = N'Trúng tuyển' OR admission_status = N'Đã nhập học') AS admitted_profiles,
+
+                (SELECT COUNT(*) FROM students) AS total_students,
+                (SELECT COUNT(*) FROM students WHERE academic_status = N'Đang học') AS active_students,
+                (SELECT COUNT(*) FROM students WHERE academic_status = N'Đã tốt nghiệp') AS graduated_students,
+
+                (SELECT COUNT(*) FROM lecturers) AS total_lecturers,
+                (SELECT ISNULL(SUM(max_slots), 0) FROM lecturers) AS total_capacity,
+                (SELECT COUNT(*) FROM advisor_assignments WHERE status = N'Đang hướng dẫn') AS assigned_slots,
+
+                (SELECT COUNT(*) FROM defense_committees) AS total_committees,
+                (SELECT COUNT(*) FROM thesis_defense_schedules) AS total_defense_schedules,
+                (SELECT COUNT(*) FROM thesis_progress WHERE status = N'Đang thực hiện') AS active_theses
+        `);
+
+        // 2. Thống kê học viên theo ngành
+        const majorsResult = await pool.request().query(`
+            SELECT m.major_id, m.major_code, m.major_name, COUNT(s.student_id) AS student_count
+            FROM majors m
+            LEFT JOIN curriculums c ON m.major_id = c.major_id
+            LEFT JOIN students s ON s.curriculum_id = c.curriculum_id
+            GROUP BY m.major_id, m.major_code, m.major_name
+            ORDER BY student_count DESC, m.major_name ASC
+        `);
+
+        // 3. Phân bổ trạng thái hồ sơ tuyển sinh
+        const admissionStatusResult = await pool.request().query(`
+            SELECT ISNULL(status, N'Chờ xét duyệt') AS status, COUNT(*) AS count
+            FROM admission_profiles
+            GROUP BY status
+        `);
+
+        // 4. Tải hướng dẫn của giảng viên
+        const lecturersWorkloadResult = await pool.request().query(`
+            SELECT TOP 8 l.lecturer_id, l.full_name, l.degree, l.max_slots,
+                   ISNULL(active_adv.active_count, 0) AS current_assigned,
+                   (l.max_slots - ISNULL(active_adv.active_count, 0)) AS slots_left
+            FROM lecturers l
+            LEFT JOIN (
+                SELECT lecturer_id, COUNT(*) AS active_count
+                FROM advisor_assignments
+                WHERE status = N'Đang hướng dẫn'
+                GROUP BY lecturer_id
+            ) active_adv ON active_adv.lecturer_id = l.lecturer_id
+            ORDER BY current_assigned DESC, l.max_slots DESC, l.full_name ASC
+        `);
+
+        // 5. Hồ sơ chờ duyệt cần xử lý ngay
+        const pendingProfilesResult = await pool.request().query(`
+            SELECT TOP 5 p.profile_id, p.full_name, p.phone, p.email, p.status, p.created_at,
+                   ac.campaign_name
+            FROM admission_profiles p
+            LEFT JOIN admission_campaigns ac ON p.campaign_id = ac.campaign_id
+            WHERE p.status = N'Chờ xét duyệt' OR p.status = N'Pending'
+            ORDER BY p.created_at DESC
+        `);
+
+        // 6. Ứng viên đủ điều kiện chờ lập hội đồng
+        const pendingDefenseCandidatesResult = await pool.request().query(`
+            SELECT TOP 5 tp.thesis_id, tp.thesis_title, tp.current_stage,
+                   s.student_id, s.student_code, p.full_name AS student_name
+            FROM thesis_progress tp
+            JOIN students s ON s.student_id = tp.student_id
+            JOIN admission_profiles p ON p.profile_id = s.profile_id
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM thesis_defense_schedules ds
+                WHERE ds.thesis_id = tp.thesis_id
+            )
+            ORDER BY tp.thesis_id DESC
+        `);
+
+        // 7. Hoạt động hệ thống gần đây (Audit logs)
+        const recentLogsResult = await pool.request().query(`
+            SELECT TOP 8 l.log_id, l.user_id, l.action, l.table_name, l.record_id, l.created_at,
+                   u.username,
+                   COALESCE(p.full_name, lec.full_name, u.username) AS user_display_name
+            FROM audit_logs l
+            LEFT JOIN users u ON l.user_id = u.user_id
+            LEFT JOIN students s ON s.user_id = u.user_id
+            LEFT JOIN admission_profiles p ON p.profile_id = s.profile_id
+            LEFT JOIN lecturers lec ON lec.user_id = u.user_id
+            ORDER BY l.created_at DESC
+        `);
+
+        return res.json({
+            success: true,
+            data: {
+                summary: summaryResult.recordset[0] || {},
+                majors: majorsResult.recordset || [],
+                admissionStatuses: admissionStatusResult.recordset || [],
+                lecturersWorkload: lecturersWorkloadResult.recordset || [],
+                pendingProfiles: pendingProfilesResult.recordset || [],
+                pendingDefenseCandidates: pendingDefenseCandidatesResult.recordset || [],
+                recentLogs: recentLogsResult.recordset || []
+            }
+        });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};

@@ -21,6 +21,7 @@ const isRoleCode = (value: unknown): value is RoleCode =>
   value === 'STUDENT' || value === 'LECTURER' || value === 'ADMIN';
 
 const adminSections: Partial<Record<TabType, AdminSection>> = {
+  'admin-overview': 'overview',
   'admin-admissions': 'admissions',
   'admin-committees': 'committees',
   'admin-lecturers': 'lecturers'
@@ -76,7 +77,7 @@ export default function App() {
       ? ['home', 'student', 'student-profile']
       : session.user.roleCode === 'LECTURER'
         ? ['home', 'faculty']
-        : ['home', 'admin-admissions', 'admin-committees', 'admin-lecturers']
+        : ['home', 'admin-overview', 'admin-admissions', 'admin-committees', 'admin-lecturers']
     : ['home', 'register', 'lookup', 'login'];
 
   const handleNavigate = (tab: TabType, majorCode?: string) => {
@@ -93,7 +94,7 @@ export default function App() {
     localStorage.setItem('agu_token', token);
     localStorage.setItem('agu_user', JSON.stringify(user));
     setSession({ token, user });
-    setActiveTab(user.roleCode === 'STUDENT' ? 'student' : user.roleCode === 'LECTURER' ? 'faculty' : 'admin-admissions');
+    setActiveTab(user.roleCode === 'STUDENT' ? 'student' : user.roleCode === 'LECTURER' ? 'faculty' : 'admin-overview');
   };
 
   const handleLogout = () => {
@@ -130,6 +131,7 @@ export default function App() {
           <AdminDashboard
             key={activeTab}
             section={activeAdminSection}
+            onNavigateTab={handleNavigate}
           />
         )}
         {activeTab === 'login' && allowedTabs.includes('login') && (

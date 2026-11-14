@@ -13,5 +13,3 @@
 | 6 | Ngô Đình Khang | DPM235428 | **QA / Security & Data Specialist** | 
 | 7 | Lâm Thái Khang | DPM235426 | **DevOps / Cloud Engineer** 
 
-## 📂 Cấu trúc thư mục (Tuần 1)
-- `01_Requirements/`: Chứa biên bản họp nhóm và danh sách User Stories bóc tách từ quy chế.

@@ -1,5 +1,6 @@
 import type {
   AdminCommitteeRecord,
+  AdminOverviewData,
   AdmissionCampaign,
   AdmissionLookupResult,
   AdmissionProfile,
@@ -93,6 +94,16 @@ export const api = {
   admission: {
     getCampaigns: () =>
       request<{ success: boolean; campaigns: AdmissionCampaign[] }>('/admission/campaigns'),
+    createCampaign: (body: {
+      campaignName: string;
+      academicYear: number;
+      startDate: string;
+      endDate: string;
+    }) =>
+      request<{ success: boolean; message: string; campaign: AdmissionCampaign }>(
+        '/admission/campaigns',
+        { method: 'POST', body: JSON.stringify(body) }
+      ),
     register: (formData: FormData) =>
       request<{
         success: boolean;
@@ -135,6 +146,7 @@ export const api = {
   },
 
   admin: {
+    getOverviewStats: () => request<{ success: boolean; data: AdminOverviewData }>('/admin/overview-stats'),
     getLecturers: () => request<{ success: boolean; lecturers: Lecturer[] }>('/admin/lecturers'),
     getLecturerStudents: (lecturerId: number) =>
       request<{ success: boolean; students: LecturerStudent[] }>(`/admin/lecturers/${lecturerId}/students`),

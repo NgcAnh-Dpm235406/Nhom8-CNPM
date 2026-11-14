@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../services/api';
 import type {
   AdminCommitteeRecord,
+  AdminOverviewData,
   AdmissionProfile,
   DefenseCandidate,
   DefenseEvaluationInput,
@@ -110,6 +111,8 @@ const fetchAdminData = async () => {
 
 
 export const useAdminDashboard = () => {
+  const [overviewData, setOverviewData] = useState<AdminOverviewData | null>(null);
+  const [isLoadingOverview, setIsLoadingOverview] = useState(false);
   const [profiles, setProfiles] = useState<AdmissionProfile[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
   const [committeeRecords, setCommitteeRecords] = useState<AdminCommitteeRecord[]>([]);
@@ -172,11 +175,25 @@ export const useAdminDashboard = () => {
     return Array.from(grouped.values());
   }, [committeeRecords]);
 
+  const loadOverview = async () => {
+    setIsLoadingOverview(true);
+    try {
+      const res = await api.admin.getOverviewStats();
+      if (res.success && res.data) {
+        setOverviewData(res.data);
+      }
+    } catch (err) {
+      console.error('Không thể tải số liệu tổng quan:', err);
+    } finally {
+      setIsLoadingOverview(false);
+    }
+  };
+
   const loadData = async () => {
     setIsLoading(true);
     setLoadError('');
     try {
-      const data = await fetchAdminData();
+      const [data] = await Promise.all([fetchAdminData(), loadOverview()]);
       setProfiles(data.profiles);
       setLecturers(data.lecturers);
       setCommitteeRecords(data.committees);
@@ -190,6 +207,7 @@ export const useAdminDashboard = () => {
 
   useEffect(() => {
     let isCurrent = true;
+    void loadOverview();
     void fetchAdminData()
       .then(data => {
         if (!isCurrent) return;
@@ -704,7 +722,11 @@ export const useAdminDashboard = () => {
     formatTime,
     committeeRoles,
     evaluationRoles,
-    emptyScoreDraft
+    emptyScoreDraft,
+    overviewData,
+    setOverviewData,
+    isLoadingOverview,
+    loadOverview
   };
 };
 

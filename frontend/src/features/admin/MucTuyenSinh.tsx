@@ -1,5 +1,20 @@
 import { useState, useMemo } from 'react';
+import { CalendarPlus, CheckCircle2 } from 'lucide-react';
+import { api } from '../../services/api';
 import type { AdminDashboardModel, ReviewStatus } from './useDuLieuQuanTri';
+
+const toDateInputValue = (date: Date) =>
+  new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+
+const getInitialCampaignDates = () => {
+  const start = new Date();
+  const end = new Date(start);
+  end.setDate(end.getDate() + 30);
+  return {
+    startDate: toDateInputValue(start),
+    endDate: toDateInputValue(end)
+  };
+};
 
 export const AdmissionsSection = ({ dashboard }: { dashboard: AdminDashboardModel }) => {
   const {
@@ -16,6 +31,33 @@ export const AdmissionsSection = ({ dashboard }: { dashboard: AdminDashboardMode
 
   // State cục bộ cho thanh tìm kiếm
   const [searchTerm, setSearchTerm] = useState('');
+  const [campaignForm, setCampaignForm] = useState(() => ({
+    campaignName: '',
+    academicYear: new Date().getFullYear(),
+    ...getInitialCampaignDates()
+  }));
+  const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
+  const [campaignError, setCampaignError] = useState('');
+  const [campaignMessage, setCampaignMessage] = useState('');
+
+  const handleCreateCampaign = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsCreatingCampaign(true);
+    setCampaignError('');
+    setCampaignMessage('');
+    try {
+      const result = await api.admission.createCampaign(campaignForm);
+      if (!result.success) throw new Error(result.message || 'Không thể tạo đợt tuyển sinh.');
+      setCampaignMessage(
+        `${result.message} ${result.campaign.campaign_name} (${result.campaign.academic_year}).`
+      );
+      setCampaignForm(current => ({ ...current, campaignName: '' }));
+    } catch (error) {
+      setCampaignError(error instanceof Error ? error.message : 'Không thể tạo đợt tuyển sinh.');
+    } finally {
+      setIsCreatingCampaign(false);
+    }
+  };
 
   // Lọc thêm dựa trên từ khóa tìm kiếm (Tên, CCCD, Email)
   const displayProfiles = useMemo(() => {
@@ -41,6 +83,95 @@ export const AdmissionsSection = ({ dashboard }: { dashboard: AdminDashboardMode
 
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm md:p-6">
+        <div className="mb-5 flex items-start gap-3">
+          <span className="rounded-xl bg-sky-100 p-2 text-sky-700">
+            <CalendarPlus className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Tạo đợt tuyển sinh</h2>
+          </div>
+        </div>
+
+        {campaignError && (
+          <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+            {campaignError}
+          </p>
+        )}
+        {campaignMessage && (
+          <div
+            role="status"
+            className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"
+          >
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+            <span>{campaignMessage}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleCreateCampaign} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="space-y-1.5 text-sm font-medium text-slate-700 lg:col-span-2">
+            Tên đợt tuyển sinh *
+            <input
+              type="text"
+              required
+              maxLength={150}
+              value={campaignForm.campaignName}
+              onChange={event => setCampaignForm(current => ({ ...current, campaignName: event.target.value }))}
+              placeholder="Ví dụ: Tuyển sinh Cao học Đợt 1"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+            />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium text-slate-700">
+            Năm học *
+            <input
+              type="number"
+              required
+              min={2000}
+              max={9999}
+              step={1}
+              value={campaignForm.academicYear}
+              onChange={event => setCampaignForm(current => ({
+                ...current,
+                academicYear: Number(event.target.value)
+              }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+            />
+          </label>
+          <span className="hidden lg:block" aria-hidden="true" />
+          <label className="space-y-1.5 text-sm font-medium text-slate-700">
+            Ngày bắt đầu *
+            <input
+              type="date"
+              required
+              min={toDateInputValue(new Date())}
+              value={campaignForm.startDate}
+              onChange={event => setCampaignForm(current => ({ ...current, startDate: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+            />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium text-slate-700">
+            Ngày kết thúc *
+            <input
+              type="date"
+              required
+              min={campaignForm.startDate || toDateInputValue(new Date())}
+              value={campaignForm.endDate}
+              onChange={event => setCampaignForm(current => ({ ...current, endDate: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+            />
+          </label>
+          <div className="flex items-end sm:col-span-2 lg:col-span-2">
+            <button
+              type="submit"
+              disabled={isCreatingCampaign}
+              className="w-full rounded-xl bg-sky-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            >
+              {isCreatingCampaign ? 'Đang tạo...' : 'Tạo đợt tuyển sinh'}
+            </button>
+          </div>
+        </form>
+      </section>
+
       {/* 1. THẺ THỐNG KÊ (METRIC CARDS) */}
       <div className="grid gap-4 sm:grid-cols-3">
         {/* Thẻ: Tổng hồ sơ */}

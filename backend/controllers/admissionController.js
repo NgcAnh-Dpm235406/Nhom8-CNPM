@@ -17,6 +17,85 @@ exports.getCampaigns = async (req, res) => {
     }
 };
 
+// Tạo đợt tuyển sinh mới (POST /api/admission/campaigns)
+exports.createCampaign = async (req, res) => {
+    const { campaignName, academicYear, startDate, endDate } = req.body;
+    const name = typeof campaignName === 'string' ? campaignName.trim() : '';
+    const year = Number(academicYear);
+
+    const isValidDate = value => {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const parsed = new Date(`${value}T00:00:00Z`);
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+
+    if (!name || name.length > 150) {
+        return res.status(400).json({
+            success: false,
+            message: 'Tên đợt tuyển sinh không được để trống và tối đa 150 ký tự.'
+        });
+    }
+    if (!Number.isSafeInteger(year) || year < 2000 || year > 9999) {
+        return res.status(400).json({ success: false, message: 'Năm học không hợp lệ.' });
+    }
+    if (!isValidDate(startDate) || !isValidDate(endDate) || endDate < startDate) {
+        return res.status(400).json({
+            success: false,
+            message: 'Ngày bắt đầu và kết thúc không hợp lệ; ngày kết thúc phải sau hoặc bằng ngày bắt đầu.'
+        });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const duplicate = await pool.request()
+            .input('campaignName', sql.NVarChar(150), name)
+            .input('academicYear', sql.Int, year)
+            .query(`
+                SELECT campaign_id
+                FROM admission_campaigns
+                WHERE campaign_name = @campaignName AND academic_year = @academicYear
+            `);
+        if (duplicate.recordset.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: 'Đợt tuyển sinh này đã tồn tại trong năm học đã chọn.'
+            });
+        }
+
+        const result = await pool.request()
+            .input('campaignName', sql.NVarChar(150), name)
+            .input('academicYear', sql.Int, year)
+            .input('startDate', sql.Date, startDate)
+            .input('endDate', sql.Date, endDate)
+            .query(`
+                INSERT INTO admission_campaigns (campaign_name, academic_year, start_date, end_date)
+                OUTPUT INSERTED.campaign_id, INSERTED.campaign_name, INSERTED.academic_year,
+                       INSERTED.start_date, INSERTED.end_date
+                VALUES (@campaignName, @academicYear, @startDate, @endDate)
+            `);
+
+        const campaign = result.recordset[0];
+        await writeAuditLog(
+            req.user?.user_id,
+            'CREATE_ADMISSION_CAMPAIGN',
+            'admission_campaigns',
+            campaign.campaign_id,
+            null,
+            campaign,
+            req.ip
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'Đã tạo đợt tuyển sinh thành công.',
+            campaign
+        });
+    } catch (err) {
+        console.error('Lỗi tạo đợt tuyển sinh:', err);
+        return res.status(500).json({ success: false, message: 'Không thể tạo đợt tuyển sinh.' });
+    }
+};
+
 // 2. Nộp hồ sơ dự tuyển trực tuyến (POST /api/admission/register)
 // Phục vụ màn hình RegisterPage.tsx
 exports.registerProfile = async (req, res) => {
