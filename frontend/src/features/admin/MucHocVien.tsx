@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   GraduationCap,
   Search,
@@ -10,10 +10,15 @@ import {
   UserCheck,
   Eye,
   X,
-  BookOpen
+  BookOpen,
+  FileCheck,
+  Award,
+  ExternalLink,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import type { AdminDashboardModel } from './useDuLieuQuanTri';
-import type { AdminStudent } from '../../types';
+import type { AdminStudent, PublicationRecord, LanguageCertRecord } from '../../types';
 
 interface MucHocVienProps {
   dashboard: AdminDashboardModel;
@@ -32,8 +37,10 @@ const getStatusBadge = (status: string) => {
     case 'Bảo lưu':
       return 'bg-amber-100 text-amber-800 border-amber-200';
     case 'Đã tốt nghiệp':
+    case 'Tốt nghiệp':
       return 'bg-indigo-100 text-indigo-800 border-indigo-200';
     case 'Buộc thôi học':
+    case 'Thôi học':
     case 'Đình chỉ':
       return 'bg-rose-100 text-rose-800 border-rose-200';
     default:
@@ -62,6 +69,90 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
   const [selectedStudent, setSelectedStudent] = useState<AdminStudent | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState<string | null>(null);
+
+  // Chuẩn đầu ra (Bài báo KH & Chứng chỉ Ngoại ngữ) trong Modal
+  const [publications, setPublications] = useState<PublicationRecord[]>([]);
+  const [languageCerts, setLanguageCerts] = useState<LanguageCertRecord[]>([]);
+  const [isLoadingOutputs, setIsLoadingOutputs] = useState(false);
+  const [isReviewingOutput, setIsReviewingOutput] = useState(false);
+
+  const loadStudentOutputs = useCallback(async (studentId: number | string) => {
+    setIsLoadingOutputs(true);
+    try {
+      const token = localStorage.getItem('agu_token');
+      const response = await fetch(`/api/admin/students/${studentId}/outputs`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPublications(data.publications || []);
+        setLanguageCerts(data.languageCerts || []);
+      }
+    } catch (err) {
+      console.error('Lỗi tải chuẩn đầu ra của học viên:', err);
+    } finally {
+      setIsLoadingOutputs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedStudent) {
+      void loadStudentOutputs(selectedStudent.student_id);
+    } else {
+      setPublications([]);
+      setLanguageCerts([]);
+    }
+  }, [selectedStudent, loadStudentOutputs]);
+
+  const handleReviewPublication = async (pubId: number, status: 'Đạt' | 'Không đạt') => {
+    if (!selectedStudent) return;
+    setIsReviewingOutput(true);
+    try {
+      const token = localStorage.getItem('agu_token');
+      const response = await fetch(`/api/admin/publications/${pubId}/review`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ status })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Không thể cập nhật trạng thái bài báo.');
+      }
+      await loadStudentOutputs(selectedStudent.student_id);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Lỗi khi duyệt bài báo.');
+    } finally {
+      setIsReviewingOutput(false);
+    }
+  };
+
+  const handleReviewLanguageCert = async (certId: number, status: 'Đạt yêu cầu' | 'Không hợp lệ') => {
+    if (!selectedStudent) return;
+    setIsReviewingOutput(true);
+    try {
+      const token = localStorage.getItem('agu_token');
+      const response = await fetch(`/api/admin/language-certs/${certId}/review`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ status })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Không thể cập nhật trạng thái chứng chỉ.');
+      }
+      await loadStudentOutputs(selectedStudent.student_id);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Lỗi khi duyệt chứng chỉ ngoại ngữ.');
+    } finally {
+      setIsReviewingOutput(false);
+    }
+  };
 
   // Distinct majors for filtering
   const distinctMajors = useMemo(() => {
@@ -123,18 +214,16 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
         { header: 'Đề tài luận văn', key: 'thesis_title', width: 40 }
       ];
 
-      // Styling header row
       const headerRow = worksheet.getRow(1);
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       headerRow.fill = {
         type: 'pattern',
         pattern: 'solid',
-        fgColor: { argb: 'FF0284C7' } // Sky 600
+        fgColor: { argb: 'FF0284C7' }
       };
       headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
       headerRow.height = 28;
 
-      // Add student data
       filteredStudents.forEach((s, idx) => {
         const row = worksheet.addRow({
           stt: idx + 1,
@@ -150,7 +239,7 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
           academic_status: s.academic_status,
           username: s.username,
           account_status: s.account_status === 'Active' ? 'Hoạt động' : 'Đã khóa',
-          lecturer_name: s.lecturer_name ? `${s.lecturer_degree || ''} ${s.lecturer_name}`.trim() : 'Chưa phân công',
+          lecturer_name: s.lecturer_name ? `${s.lecturer_name} (${s.lecturer_degree || ''})` : 'Chưa phân công',
           thesis_title: s.thesis_title || 'Chưa đăng ký'
         });
         row.alignment = { vertical: 'middle' };
@@ -175,11 +264,11 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
   // Quick stats
   const activeCount = students.filter(s => s.academic_status === 'Đang học').length;
   const reservedCount = students.filter(s => s.academic_status === 'Bảo lưu').length;
-  const graduatedCount = students.filter(s => s.academic_status === 'Đã tốt nghiệp').length;
+  const graduatedCount = students.filter(s => s.academic_status === 'Đã tốt nghiệp' || s.academic_status === 'Tốt nghiệp').length;
   const lockedCount = students.filter(s => s.account_status !== 'Active').length;
   const statisticsUnavailable = students.length === 0 && (isLoadingStudents || Boolean(studentsError));
   const displayedCount = statisticsUnavailable ? '—' : students.length;
-  const displayStatistic = (value: number) => statisticsUnavailable ? '—' : value;
+  const displayStatistic = (value: number) => (statisticsUnavailable ? '—' : value);
 
   return (
     <div className="space-y-6">
@@ -357,7 +446,9 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
               ) : filteredStudents.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-sm text-slate-500">
-                    {studentsError ? 'Không có dữ liệu để hiển thị do danh sách chưa tải được.' : 'Không tìm thấy học viên nào phù hợp với bộ lọc tìm kiếm.'}
+                    {studentsError
+                      ? 'Không có dữ liệu để hiển thị do danh sách chưa tải được.'
+                      : 'Không tìm thấy học viên nào phù hợp với bộ lọc tìm kiếm.'}
                   </td>
                 </tr>
               ) : (
@@ -381,7 +472,7 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
                     <td className="px-4 py-3.5">
                       <p className="font-semibold text-slate-800">{student.major_name}</p>
                       <p className="text-[11px] text-slate-500">
-                        {student.cohort} • Định hướng: <span className="font-medium text-slate-700">{student.orientation}</span>
+                        {student.cohort} - Định hướng: <span className="font-medium text-slate-700">{student.orientation}</span>
                       </p>
                       <p className="text-[11px] text-slate-400">Tổng tín chỉ: {student.total_credits}</p>
                     </td>
@@ -391,8 +482,10 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
                       {student.lecturer_name ? (
                         <div>
                           <p className="font-semibold text-slate-800">
-                            {student.lecturer_degree ? `${student.lecturer_degree} ` : ''}
                             {student.lecturer_name}
+                            {student.lecturer_degree && (
+                              <span className="text-[11px] font-normal text-slate-500 ml-1">({student.lecturer_degree})</span>
+                            )}
                           </p>
                           {student.thesis_title ? (
                             <p className="text-[11px] text-slate-500 line-clamp-1 max-w-xs" title={student.thesis_title}>
@@ -501,10 +594,10 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
                           type="button"
                           onClick={() => setSelectedStudent(student)}
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-sky-700 transition"
-                          title="Xem chi tiết hồ sơ học viên"
+                          title="Xem chi tiết & Duyệt chuẩn đầu ra"
                         >
                           <Eye className="h-3.5 w-3.5" />
-                          <span>Chi tiết</span>
+                          <span>Chi tiết / Duyệt CĐR</span>
                         </button>
                         <button
                           type="button"
@@ -536,7 +629,7 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
         </div>
       </div>
 
-      {/* 4. Student Detail Modal */}
+      {/* 4. Student Detail & Output Approval Modal */}
       {selectedStudent && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
@@ -548,7 +641,7 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="student-detail-title"
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl space-y-6"
+            className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl space-y-6"
           >
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-100 pb-4">
@@ -661,7 +754,7 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
                   <p className="text-slate-500">Giảng viên hướng dẫn:</p>
                   <p className="font-bold text-slate-800 text-sm mt-0.5">
                     {selectedStudent.lecturer_name
-                      ? `${selectedStudent.lecturer_degree || ''} ${selectedStudent.lecturer_name}`.trim()
+                      ? `${selectedStudent.lecturer_name} (${selectedStudent.lecturer_degree || ''})`
                       : 'Chưa phân công giảng viên hướng dẫn'}
                   </p>
                 </div>
@@ -678,6 +771,161 @@ export const MucHocVien = ({ dashboard }: MucHocVienProps) => {
                 <p className="font-semibold text-slate-800 mt-0.5 leading-relaxed">
                   {selectedStudent.thesis_title || 'Chưa đăng ký đề tài'}
                 </p>
+              </div>
+            </div>
+
+            {/* PHẦN BỔ SUNG: DUYỆT CHUẨN ĐẦU RA (BÀI BÁO KH & CHỨNG CHỈ NGOẠI NGỮ) */}
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4 space-y-4 text-xs">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <Award className="h-4 w-4 text-indigo-600" />
+                  Thẩm định Chuẩn đầu ra (Điều kiện Gatekeeper bảo vệ Luận văn)
+                </h4>
+                {isLoadingOutputs && <span className="text-slate-400">Đang tải minh chứng...</span>}
+              </div>
+
+              {/* 1. Bài báo khoa học */}
+              <div className="space-y-2">
+                <p className="font-bold text-slate-700 flex items-center gap-1.5">
+                  <FileCheck className="h-3.5 w-3.5 text-sky-600" />
+                  1. Công bố Khoa học ({publications.length})
+                </p>
+                {publications.length === 0 ? (
+                  <p className="italic text-slate-400 pl-5">Học viên chưa nộp bài báo khoa học nào.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {publications.map(pub => (
+                      <div
+                        key={pub.publication_id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-bold text-slate-900">{pub.paper_title}</p>
+                          <p className="text-slate-500">
+                            Tạp chí/Hội nghị: <span className="font-medium text-slate-700">{pub.journal_name}</span> ({pub.ranking})
+                          </p>
+                          <div className="flex flex-wrap items-center gap-3 pt-0.5">
+                            <span
+                              className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                                pub.status === 'Đạt'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : pub.status === 'Không đạt'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {pub.status}
+                            </span>
+                            {pub.evidence_file && (
+                              <a
+                                href={pub.evidence_file}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-semibold text-sky-600 hover:underline"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Xem file bài báo
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isReviewingOutput || pub.status === 'Đạt'}
+                            onClick={() => void handleReviewPublication(pub.publication_id, 'Đạt')}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Duyệt Đạt
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isReviewingOutput || pub.status === 'Không đạt'}
+                            onClick={() => void handleReviewPublication(pub.publication_id, 'Không đạt')}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-2.5 py-1.5 font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                            Từ chối
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Chứng chỉ ngoại ngữ */}
+              <div className="space-y-2 pt-2 border-t border-indigo-100">
+                <p className="font-bold text-slate-700 flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5 text-indigo-600" />
+                  2. Chứng chỉ Ngoại ngữ Chuẩn đầu ra ({languageCerts.length})
+                </p>
+                {languageCerts.length === 0 ? (
+                  <p className="italic text-slate-400 pl-5">Học viên chưa nộp chứng chỉ ngoại ngữ nào.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {languageCerts.map(cert => (
+                      <div
+                        key={cert.cert_id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-bold text-slate-900">
+                            {cert.cert_type} — Điểm/Bậc: <span className="text-indigo-700">{cert.score_achieved}</span>
+                          </p>
+                          <p className="text-slate-500">Ngày cấp: {formatDate(cert.issue_date)}</p>
+                          <div className="flex flex-wrap items-center gap-3 pt-0.5">
+                            <span
+                              className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                                cert.status === 'Đạt yêu cầu'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : cert.status === 'Không hợp lệ'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {cert.status}
+                            </span>
+                            {cert.certificate_file_url && (
+                              <a
+                                href={cert.certificate_file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-semibold text-sky-600 hover:underline"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Xem bản scan chứng chỉ
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isReviewingOutput || cert.status === 'Đạt yêu cầu'}
+                            onClick={() => void handleReviewLanguageCert(cert.cert_id, 'Đạt yêu cầu')}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Đạt yêu cầu
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isReviewingOutput || cert.status === 'Không hợp lệ'}
+                            onClick={() => void handleReviewLanguageCert(cert.cert_id, 'Không hợp lệ')}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-2.5 py-1.5 font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                            Không hợp lệ
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

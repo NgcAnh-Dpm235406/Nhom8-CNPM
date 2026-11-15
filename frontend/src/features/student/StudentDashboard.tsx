@@ -40,6 +40,21 @@ type DashboardTab = 'thesis' | 'gatekeeper' | 'courses' | 'grades-tuition';
 export const StudentDashboard = () => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('thesis');
 
+  useEffect(() => {
+    const savedSubTab = sessionStorage.getItem('agu_student_subtab') as DashboardTab | null;
+    if (savedSubTab) {
+      setActiveTab(savedSubTab);
+      sessionStorage.removeItem('agu_student_subtab');
+    }
+    const handleSubTabNavigate = (e: Event) => {
+      const customEvent = e as CustomEvent<DashboardTab>;
+      if (customEvent.detail) {
+        setActiveTab(customEvent.detail);
+      }
+    };
+    window.addEventListener('agu:student-tab', handleSubTabNavigate);
+    return () => window.removeEventListener('agu:student-tab', handleSubTabNavigate);
+  }, []);
   // Dữ liệu học viên & Luận văn
   const [student, setStudent] = useState<StudentInfo | null>(null);
   const [thesis, setThesis] = useState<StudentThesisProgress | null>(null);
@@ -175,16 +190,17 @@ export const StudentDashboard = () => {
     return () => { isMounted = false; };
   }, [selectedSemesterId]);
 
-  // Tải CTĐT khung 60 tín chỉ
+  // Tải CTĐT khung 60 tín chỉ theo đúng ngành của học viên
   useEffect(() => {
+    const curriculumId = student?.curriculum_id || 1;
     let isMounted = true;
-    api.academic.getCurriculumCourses(1).then(res => {
+    api.academic.getCurriculumCourses(curriculumId).then(res => {
       if (isMounted && res.success) {
         setCurriculumCourses(res.courses);
       }
     }).catch(() => {});
     return () => { isMounted = false; };
-  }, []);
+  }, [student?.curriculum_id]);
 
   // Kiểm tra Gatekeeper
   const handleRunGatekeeper = async () => {

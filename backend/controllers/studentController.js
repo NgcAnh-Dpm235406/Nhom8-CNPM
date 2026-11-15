@@ -25,6 +25,7 @@ exports.getMyInfo = async (req, res) => {
                 SELECT 
                     s.student_id,
                     s.student_code,
+                    s.curriculum_id,
                     s.academic_status,
                     s.enrollment_date,
                     p.full_name,
