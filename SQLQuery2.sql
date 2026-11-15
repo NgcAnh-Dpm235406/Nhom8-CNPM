@@ -117,7 +117,7 @@ CREATE TABLE [admission_profiles] (
 
 CREATE TABLE [majors] (
     [major_id] INT IDENTITY(1,1) PRIMARY KEY,
-    [major_code] VARCHAR(20) NOT NULL UNIQUE, -- Mã ngành Bộ GD&ĐT (VD: 8480205)
+    [major_code] VARCHAR(20) NOT NULL UNIQUE,
     [major_name] NVARCHAR(150) NOT NULL
 );
 
@@ -127,9 +127,9 @@ ADD CONSTRAINT [FK_profiles_majors] FOREIGN KEY ([major_id]) REFERENCES [majors]
 CREATE TABLE [curriculums] (
     [curriculum_id] INT IDENTITY(1,1) PRIMARY KEY,
     [major_id] INT NOT NULL,
-    [cohort] VARCHAR(20) NOT NULL,                    -- Ví dụ: 'Khóa 2024 - 2026'
+    [cohort] VARCHAR(20) NOT NULL,
     [orientation] NVARCHAR(20) NOT NULL CHECK ([orientation] IN (N'Ứng dụng', N'Nghiên cứu')),
-    [total_credits] INT NOT NULL DEFAULT 60,         -- Thạc sĩ chuẩn 60 tín chỉ
+    [total_credits] INT NOT NULL DEFAULT 60,
     [version] VARCHAR(20) NOT NULL,
     CONSTRAINT [FK_curriculums_majors] FOREIGN KEY ([major_id]) REFERENCES [majors]([major_id])
 );
@@ -153,14 +153,13 @@ CREATE TABLE [curriculum_courses] (
     CONSTRAINT [FK_cc_courses] FOREIGN KEY ([course_id]) REFERENCES [courses]([course_id])
 );
 
--- Giảng viên AGU: Chuẩn hướng dẫn Thạc sĩ bắt buộc học vị Tiến sĩ trở lên
 CREATE TABLE [lecturers] (
     [lecturer_id] INT IDENTITY(1,1) PRIMARY KEY,
     [user_id] BIGINT NOT NULL UNIQUE,
     [lecturer_code] VARCHAR(20) NOT NULL UNIQUE,
     [full_name] NVARCHAR(150) NOT NULL,
     [degree] NVARCHAR(30) NOT NULL CHECK ([degree] IN (N'Tiến sĩ', N'Phó Giáo sư', N'Giáo sư')),
-    [max_slots] INT NOT NULL DEFAULT 4,             -- Giới hạn: Tối đa 3 - 5 học viên Thạc sĩ/đợt
+    [max_slots] INT NOT NULL DEFAULT 4,
     [email] VARCHAR(100) NOT NULL,
     [phone] VARCHAR(15) NULL,
     CONSTRAINT [FK_lecturers_users] FOREIGN KEY ([user_id]) REFERENCES [users]([user_id]) ON DELETE CASCADE
@@ -204,10 +203,10 @@ CREATE TABLE [schedules] (
 CREATE TABLE [students] (
     [student_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [user_id] BIGINT NOT NULL UNIQUE,
-    [student_code] VARCHAR(20) NOT NULL UNIQUE,      -- MSHV chuẩn AGU (VD: 24M848020501)
+    [student_code] VARCHAR(20) NOT NULL UNIQUE,
     [profile_id] BIGINT NOT NULL UNIQUE,
     [curriculum_id] INT NOT NULL,
-    [academic_status] NVARCHAR(30) DEFAULT N'Đang học' CHECK ([academic_status] IN (N'Đang học', N'Bảo lưu', N'Tốt nghiệp', N'Thôi học')),
+    [academic_status] NVARCHAR(30) DEFAULT N'Đang học' CHECK ([academic_status] IN (N'Đang học', N'Bảo lưu', N'Tốt nghiệp', N'Đã tốt nghiệp', N'Thôi học', N'Buộc thôi học', N'Đình chỉ')),
     [enrollment_date] DATE NOT NULL,
     CONSTRAINT [FK_students_users] FOREIGN KEY ([user_id]) REFERENCES [users]([user_id]) ON DELETE CASCADE,
     CONSTRAINT [FK_students_profiles] FOREIGN KEY ([profile_id]) REFERENCES [admission_profiles]([profile_id]),
@@ -252,7 +251,6 @@ CREATE TABLE [student_grades] (
 -- PHÂN HỆ 5: LUẬN VĂN THẠC SĨ AGU, TIẾN ĐỘ 5 BƯỚC & CHUẨN ĐẦU RA
 -- =============================================================================
 
--- Phân công Giảng viên Hướng dẫn
 CREATE TABLE [advisor_assignments] (
     [advisor_assignment_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [student_id] BIGINT NOT NULL,
@@ -264,7 +262,6 @@ CREATE TABLE [advisor_assignments] (
     CONSTRAINT [FK_advisor_lecturers] FOREIGN KEY ([lecturer_id]) REFERENCES [lecturers]([lecturer_id])
 );
 
--- Tiến trình Đề tài Luận văn Thạc sĩ (Chuẩn 5 mốc theo quy chế SĐH AGU)
 CREATE TABLE [thesis_progress] (
     [thesis_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [student_id] BIGINT NOT NULL UNIQUE,
@@ -283,21 +280,19 @@ CREATE TABLE [thesis_progress] (
     CONSTRAINT [FK_thesis_students] FOREIGN KEY ([student_id]) REFERENCES [students]([student_id]) ON DELETE CASCADE
 );
 
--- Báo cáo nộp bài theo từng mốc (Cảnh báo màu Xanh / Vàng / Đỏ)
 CREATE TABLE [thesis_submissions] (
     [submission_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [thesis_id] BIGINT NOT NULL,
-    [stage_name] NVARCHAR(50) NOT NULL, -- N'Bảo vệ đề cương', N'Tiến độ lần 1', N'Tiến độ lần 2', N'Bản thảo'
-    [report_file_url] NVARCHAR(255) NOT NULL, -- Upload file PDF <= 25MB
+    [stage_name] NVARCHAR(50) NOT NULL,
+    [report_file_url] NVARCHAR(255) NOT NULL,
     [deadline] DATE NOT NULL,
     [submitted_at] DATETIME NULL,
-    [lecturer_feedback] NVARCHAR(MAX) NULL,   -- Lời dặn / nhận xét của Thầy Cô
+    [lecturer_feedback] NVARCHAR(MAX) NULL,
     [color_warning] NVARCHAR(10) DEFAULT 'green' CHECK ([color_warning] IN ('green', 'yellow', 'red')),
     [status] NVARCHAR(30) DEFAULT N'Chờ đánh giá' CHECK ([status] IN (N'Chờ đánh giá', N'Đạt', N'Cần sửa đổi')),
     CONSTRAINT [FK_sub_thesis] FOREIGN KEY ([thesis_id]) REFERENCES [thesis_progress]([thesis_id]) ON DELETE CASCADE
 );
 
--- Kiểm tra Đạo văn Turnitin (Quy chế AGU: Tỷ lệ trùng lặp <= 20%)
 CREATE TABLE [turnitin_checks] (
     [check_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [thesis_id] BIGINT NOT NULL,
@@ -309,28 +304,26 @@ CREATE TABLE [turnitin_checks] (
     CONSTRAINT [FK_turnitin_thesis] FOREIGN KEY ([thesis_id]) REFERENCES [thesis_progress]([thesis_id]) ON DELETE CASCADE
 );
 
--- Chuẩn đầu ra NCKH: 01 Bài báo công bố tại Tạp chí KH ĐHAG hoặc HĐGSNN / Scopus
 CREATE TABLE [scientific_publications] (
     [publication_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [student_id] BIGINT NOT NULL,
     [paper_title] NVARCHAR(500) NOT NULL,
-    [journal_name] NVARCHAR(255) NOT NULL,    -- Ví dụ: Tạp chí Khoa học Trường ĐH An Giang (AGU-JOS)
-    [issn_isbn] VARCHAR(50) NULL,             -- Chỉ số ISSN (VD: 0866-8086)
-    [paper_url] NVARCHAR(500) NULL,           -- Link bài báo trực tuyến
+    [journal_name] NVARCHAR(255) NOT NULL,
+    [issn_isbn] VARCHAR(50) NULL,
+    [paper_url] NVARCHAR(500) NULL,
     [ranking] NVARCHAR(30) NOT NULL CHECK ([ranking] IN (N'Tạp chí KH ĐH An Giang', N'HĐGSNN', N'Scopus/WoS', N'Hội nghị SĐH')),
     [points] DECIMAL(4,2) NOT NULL DEFAULT 0.00,
-    [evidence_file] NVARCHAR(255) NOT NULL,   -- File PDF toàn văn bài báo
+    [evidence_file] NVARCHAR(255) NOT NULL,
     [status] NVARCHAR(30) DEFAULT N'Chờ thẩm định' CHECK ([status] IN (N'Chờ thẩm định', N'Đạt', N'Không đạt')),
     [admin_note] NVARCHAR(500) NULL,
     CONSTRAINT [FK_pub_students] FOREIGN KEY ([student_id]) REFERENCES [students]([student_id]) ON DELETE CASCADE
 );
 
--- Chuẩn đầu ra Ngoại ngữ Thạc sĩ: VSTEP Bậc 4 (chuẩn AGU & ĐHQG-HCM), IELTS 5.5...
 CREATE TABLE [language_certificates] (
     [cert_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [student_id] BIGINT NOT NULL,
-    [cert_type] NVARCHAR(50) NOT NULL, -- N'VSTEP Bậc 4 (B2 ĐHQG-HCM)', N'IELTS', N'TOEFL iBT'
-    [score_achieved] NVARCHAR(20) NOT NULL, -- '6.5', '60/100', 'Bậc 4'
+    [cert_type] NVARCHAR(50) NOT NULL,
+    [score_achieved] NVARCHAR(20) NOT NULL,
     [issue_date] DATE NOT NULL,
     [expiry_date] DATE NULL,
     [certificate_file_url] NVARCHAR(255) NOT NULL,
@@ -348,12 +341,12 @@ CREATE TABLE [defense_committees] (
     [committee_id] INT IDENTITY(1,1) PRIMARY KEY,
     [committee_name] NVARCHAR(150) NOT NULL,
     [defense_date] DATE NOT NULL,
-    [defense_room] NVARCHAR(100) NOT NULL, -- Ví dụ: 'Phòng Hội thảo 1 - Khu Hiệu bộ AGU'
-    [president_id] INT NOT NULL,     -- 1. Chủ tịch hội đồng
-    [reviewer_1_id] INT NOT NULL,    -- 2. Phản biện 1
-    [reviewer_2_id] INT NOT NULL,    -- 3. Phản biện 2
-    [secretary_id] INT NOT NULL,     -- 4. Thư ký hội đồng
-    [member_id] INT NOT NULL,        -- 5. Ủy viên hội đồng
+    [defense_room] NVARCHAR(100) NOT NULL,
+    [president_id] INT NOT NULL,
+    [reviewer_1_id] INT NOT NULL,
+    [reviewer_2_id] INT NOT NULL,
+    [secretary_id] INT NOT NULL,
+    [member_id] INT NOT NULL,
     [created_at] DATETIME DEFAULT GETDATE(),
     CONSTRAINT [FK_com_president] FOREIGN KEY ([president_id]) REFERENCES [lecturers]([lecturer_id]),
     CONSTRAINT [FK_com_rev1] FOREIGN KEY ([reviewer_1_id]) REFERENCES [lecturers]([lecturer_id]),
@@ -362,7 +355,6 @@ CREATE TABLE [defense_committees] (
     CONSTRAINT [FK_com_member] FOREIGN KEY ([member_id]) REFERENCES [lecturers]([lecturer_id])
 );
 
--- Lịch bảo vệ chi tiết của từng học viên Thạc sĩ
 CREATE TABLE [thesis_defense_schedules] (
     [defense_schedule_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [thesis_id] BIGINT NOT NULL UNIQUE,
@@ -375,17 +367,15 @@ CREATE TABLE [thesis_defense_schedules] (
     CONSTRAINT [FK_sched_committee] FOREIGN KEY ([committee_id]) REFERENCES [defense_committees]([committee_id])
 );
 
--- Phiếu chấm điểm độc lập của 5 Thầy/Cô trong Hội đồng
 CREATE TABLE [defense_evaluations] (
     [evaluation_id] BIGINT IDENTITY(1,1) PRIMARY KEY,
     [defense_schedule_id] BIGINT NOT NULL,
     [lecturer_id] INT NOT NULL,
     [role_in_committee] NVARCHAR(50) NOT NULL CHECK ([role_in_committee] IN (N'Chủ tịch', N'Phản biện 1', N'Phản biện 2', N'Thư ký', N'Ủy viên')),
-    -- Tiêu chuẩn chấm điểm thang 10 của AGU:
-    [content_score] DECIMAL(4,2) NOT NULL CHECK ([content_score] BETWEEN 0 AND 5.0),       -- Nội dung (Tối đa 5.0đ)
-    [presentation_score] DECIMAL(4,2) NOT NULL CHECK ([presentation_score] BETWEEN 0 AND 2.5), -- Trình bày (Tối đa 2.5đ)
-    [qa_score] DECIMAL(4,2) NOT NULL CHECK ([qa_score] BETWEEN 0 AND 2.5),                 -- Trả lời câu hỏi (Tối đa 2.5đ)
-    [total_score] AS ([content_score] + [presentation_score] + [qa_score]) PERSISTED,      -- Tổng điểm
+    [content_score] DECIMAL(4,2) NOT NULL CHECK ([content_score] BETWEEN 0 AND 5.0),
+    [presentation_score] DECIMAL(4,2) NOT NULL CHECK ([presentation_score] BETWEEN 0 AND 2.5),
+    [qa_score] DECIMAL(4,2) NOT NULL CHECK ([qa_score] BETWEEN 0 AND 2.5),
+    [total_score] AS ([content_score] + [presentation_score] + [qa_score]) PERSISTED,
     [feedback] NVARCHAR(MAX) NULL,
     [created_at] DATETIME DEFAULT GETDATE(),
     CONSTRAINT [UQ_eval_schedule_lec] UNIQUE ([defense_schedule_id], [lecturer_id]),
@@ -445,7 +435,6 @@ GO
 -- PHẦN 8: TRIGGERS & PROCEDURES ĐẶC THÙ AGU
 -- =============================================================================
 
--- 1. Trigger: Chặn phân công giảng viên chưa đạt chuẩn Tiến sĩ dạy lớp Thạc sĩ
 CREATE OR ALTER TRIGGER [trg_check_lecturer_degree_before_assignment]
 ON [schedules]
 FOR INSERT, UPDATE
@@ -465,7 +454,6 @@ BEGIN
 END;
 GO
 
--- 2. Stored Procedure: Tự động tính điểm trung bình Hội đồng Luận văn Thạc sĩ
 CREATE OR ALTER PROCEDURE [sp_calculate_defense_final_grade]
     @p_defense_schedule_id BIGINT
 AS
@@ -480,7 +468,6 @@ BEGIN
     FROM [defense_evaluations]
     WHERE [defense_schedule_id] = @p_defense_schedule_id;
 
-    -- Đủ 3/5 thành viên trở lên đã chấm -> Cập nhật kết quả đạt chuẩn AGU (>= 5.50)
     IF @submitted_count >= 3
     BEGIN
         UPDATE [thesis_defense_schedules]
@@ -491,7 +478,6 @@ BEGIN
 END;
 GO
 
--- 3. Stored Procedure: GATEKEEPER - Kiểm tra 4 điều kiện bảo vệ Luận văn Thạc sĩ tại AGU
 CREATE OR ALTER PROCEDURE [sp_check_thesis_defense_gatekeeper]
     @p_student_id BIGINT,
     @p_is_eligible BIT OUTPUT,
@@ -508,7 +494,6 @@ BEGIN
     SET @p_is_eligible = 1;
     SET @p_message = N'';
     
-    -- 1. Điều kiện 1: Đã hoàn tất học phí tại AGU
     SELECT @v_unpaid_tuition = ISNULL(SUM([outstanding_balance]), 0)
     FROM [tuition_fees]
     WHERE [student_id] = @p_student_id;
@@ -519,7 +504,6 @@ BEGIN
         SET @p_message = @p_message + N'[Chặn] Học viên còn nợ học phí: ' + FORMAT(@v_unpaid_tuition, 'N0') + N' VNĐ. ';
     END
     
-    -- 2. Điều kiện 2: Kiểm tra Đạo văn Turnitin (<= 20% theo quy chế AGU)
     SELECT TOP 1 @v_turnitin_score = tc.[similarity_score]
     FROM [turnitin_checks] tc
     JOIN [thesis_progress] tp ON tc.[thesis_id] = tp.[thesis_id]
@@ -532,7 +516,6 @@ BEGIN
         SET @p_message = @p_message + N'[Chặn] Tỷ lệ trùng lặp Turnitin vượt quá quy chế <= 20% (Hiện tại: ' + CAST(ISNULL(@v_turnitin_score, 100) AS NVARCHAR(10)) + N'%). ';
     END
     
-    -- 3. Điều kiện 3: Có tối thiểu 01 Bài báo KH (Tạp chí KH ĐH An Giang / HĐGSNN)
     SELECT @v_approved_papers = COUNT(*)
     FROM [scientific_publications]
     WHERE [student_id] = @p_student_id AND [status] = N'Đạt';
@@ -543,7 +526,6 @@ BEGIN
         SET @p_message = @p_message + N'[Chặn] Chưa có bài báo khoa học được nghiệm thu (Yêu cầu: 1 bài). ';
     END
 
-    -- 4. Điều kiện 4: Chứng chỉ Ngoại ngữ Chuẩn đầu ra (VSTEP Bậc 4 ĐHQG-HCM / IELTS 5.5+)
     SELECT @v_approved_lang_cert = COUNT(*)
     FROM [language_certificates]
     WHERE [student_id] = @p_student_id AND [status] = N'Đạt yêu cầu';
@@ -554,7 +536,6 @@ BEGIN
         SET @p_message = @p_message + N'[Chặn] Chưa có Chứng chỉ tiếng Anh Chuẩn đầu ra Thạc sĩ (VSTEP Bậc 4). ';
     END
     
-    -- Kết luận
     IF @p_is_eligible = 1
     BEGIN
         SET @p_message = N'Đủ điều kiện tiêu chuẩn bảo vệ luận văn Thạc sĩ tại ĐH An Giang.';
@@ -608,16 +589,16 @@ INSERT INTO [lecturers] ([user_id], [lecturer_code], [full_name], [degree], [max
 INSERT INTO [admission_campaigns] ([campaign_name], [academic_year], [start_date], [end_date]) VALUES
 (N'Tuyển sinh Cao học Đợt 1 - Năm 2024', 2024, '2024-03-01', '2024-05-30');
 
-INSERT INTO [admission_profiles] ([campaign_id], [major_id], [full_name], [dob], [id_card_number], [phone], [email], [status], [admission_status]) VALUES
-(1, 1, N'Nguyễn Thị Ngân Huệ', '2001-05-12', '089201004123', '0987654321', 'dpm235422@agu.edu.vn', N'Đạt yêu cầu', N'Đã nhập học'),
-(1, 2, N'Huỳnh Hiếu', '2001-08-20', '089201004124', '0987654322', 'dpm235419@agu.edu.vn', N'Đạt yêu cầu', N'Đã nhập học');
+INSERT INTO [admission_profiles] ([campaign_id], [major_id], [full_name], [dob], [id_card_number], [phone], [email], [undergrad_degree_file], [status], [admission_status]) VALUES
+(1, 1, N'Nguyễn Thị Ngân Huệ', '2001-05-12', '089201004123', '0987654321', 'dpm235422@agu.edu.vn', '/uploads/Ho So Minh Chung Dao Tao Thac Si AGU.pdf', N'Đạt yêu cầu', N'Đã nhập học'),
+(1, 2, N'Huỳnh Hiếu', '2001-08-20', '089201004124', '0987654322', 'dpm235419@agu.edu.vn', '/uploads/Ho So Minh Chung Dao Tao Thac Si AGU.pdf', N'Đạt yêu cầu', N'Đã nhập học');
 
 -- 7. Học viên Thạc sĩ (Students)
 INSERT INTO [students] ([user_id], [student_code], [profile_id], [curriculum_id], [academic_status], [enrollment_date]) VALUES
 (7, '24M848020501', 1, 1, N'Đang học', '2024-09-01'),
-(8, '24M848020502', 2, 1, N'Đang học', '2024-09-01');
+(8, '24M848020502', 2, 2, N'Đang học', '2024-09-01');
 
--- 8. Học phí Thạc sĩ AGU
+-- 8. Học kỳ & Học phí Thạc sĩ AGU
 INSERT INTO [semesters] ([semester_name], [start_date], [end_date]) VALUES 
 (N'Học kỳ 1 (2024-2025)', '2024-09-01', '2025-01-15');
 
@@ -625,42 +606,88 @@ INSERT INTO [tuition_fees] ([student_id], [semester_id], [base_amount], [due_dat
 (1, 1, 14500000.00, '2024-10-15', 14500000.00, N'Hoàn thành'),
 (2, 1, 14500000.00, '2024-10-15', 14500000.00, N'Hoàn thành');
 
--- 9. Đề tài Luận văn Thạc sĩ & Phân công GVHD
+-- 9. Môn học, Khung CTĐT, Lớp học phần, Lịch học & Bảng điểm
+INSERT INTO [courses] ([course_code], [course_name], [credits], [prerequisite_course_id]) VALUES
+('SDH001', N'Triết học (Cao học)', 4, NULL),
+('KTPM801', N'Kiến trúc phần mềm nâng cao', 3, NULL),
+('KTPM802', N'Phát triển hệ thống thông tin hiện đại', 3, 2),
+('KTPM803', N'Phương pháp nghiên cứu khoa học CNTT', 3, NULL),
+('KTPM804', N'Bảo mật ứng dụng và Dữ liệu lớn', 3, NULL),
+('KHMT801', N'Học máy nâng cao và Học sâu', 3, NULL);
+
+INSERT INTO [curriculum_courses] ([curriculum_id], [course_id], [course_type], [recommended_semester]) VALUES
+(1, 1, N'Bắt buộc', 1),
+(1, 2, N'Bắt buộc', 1),
+(1, 3, N'Bắt buộc', 2),
+(1, 4, N'Bắt buộc', 1),
+(1, 5, N'Tự chọn', 2),
+(2, 1, N'Bắt buộc', 1),
+(2, 4, N'Bắt buộc', 1),
+(2, 6, N'Bắt buộc', 1);
+
+INSERT INTO [course_classes] ([course_id], [semester_id], [class_name], [max_students], [status]) VALUES
+(1, 1, N'Lớp Triết học Cao học - K24', 35, N'Mở đăng ký'),
+(2, 1, N'Lớp Kiến trúc phần mềm nâng cao - K24', 30, N'Mở đăng ký'),
+(4, 1, N'Lớp Phương pháp NCKH CNTT - K24', 30, N'Mở đăng ký');
+
+INSERT INTO [schedules] ([class_id], [lecturer_id], [room_name], [day_of_week], [start_shift], [end_shift]) VALUES
+(1, 1, N'Phòng A201 - Khu Trung tâm AGU', 7, 1, 4),
+(2, 2, N'Phòng Lab Sau Đại học - Khoa CNTT', 7, 6, 9),
+(3, 3, N'Phòng B105 - Khoa CNTT', 8, 1, 4);
+
+INSERT INTO [course_registrations] ([student_id], [class_id]) VALUES (1, 1), (1, 2);
+
+INSERT INTO [student_grades] ([registration_id], [process_grade], [exam_grade], [final_grade], [is_locked]) VALUES
+(1, 8.50, 8.00, 8.20, 1),
+(2, 9.00, 8.50, 8.70, 0);
+
+-- 10. Đề tài Luận văn Thạc sĩ & Phân công GVHD
 INSERT INTO [thesis_progress] ([student_id], [thesis_title], [current_stage], [progress_percent], [status]) VALUES
 (1, N'Ứng dụng Microservices và AI trong Quản trị Đào tạo Sau Đại học tại Trường Đại học An Giang', N'Báo cáo tiến độ lần 2', 65, N'Đang thực hiện'),
 (2, N'Xây dựng Hệ thống Kiểm soát Trùng lặp Đề tài và Đánh giá NCKH Dựa trên Xử lý Ngôn ngữ Tự nhiên', N'Bảo vệ đề cương', 25, N'Đang thực hiện');
 
 INSERT INTO [advisor_assignments] ([student_id], [lecturer_id], [role], [assigned_date], [status]) VALUES
-(1, 4, N'Hướng dẫn chính', '2024-11-01', N'Đang hướng dẫn'), -- TS. Trần Văn B
-(2, 1, N'Hướng dẫn chính', '2024-11-01', N'Đang hướng dẫn'); -- PGS.TS. Đoàn Thanh Nghị
+(1, 4, N'Hướng dẫn chính', '2024-11-01', N'Đang hướng dẫn'),
+(2, 1, N'Hướng dẫn chính', '2024-11-01', N'Đang hướng dẫn');
 
--- 10. Tiến độ nộp bài & Cảnh báo màu Xanh/Vàng/Đỏ
+-- 11. Tiến độ nộp bài & Cảnh báo màu Xanh/Vàng/Đỏ
 INSERT INTO [thesis_submissions] ([thesis_id], [stage_name], [report_file_url], [deadline], [submitted_at], [lecturer_feedback], [color_warning], [status]) VALUES
-(1, N'Bảo vệ đề cương', '/uploads/de_cuong_24M848020501.pdf', '2025-01-15', '2025-01-10', N'Đề cương rõ ràng, hướng nghiên cứu thiết thực cho AGU.', 'green', N'Đạt'),
-(1, N'Báo cáo tiến độ lần 1', '/uploads/tien_do_1_24M848020501.pdf', '2025-04-20', '2025-04-18', N'Đã hoàn thành khảo sát cơ sở dữ liệu và kiến trúc.', 'green', N'Đạt'),
-(1, N'Báo cáo tiến độ lần 2', '/uploads/tien_do_2_24M848020501.pdf', '2025-08-30', NULL, NULL, 'yellow', N'Chờ đánh giá');
+(1, N'Bảo vệ đề cương', '/uploads/Ho So Minh Chung Dao Tao Thac Si AGU.pdf', '2025-01-15', '2025-01-10', N'Đề cương rõ ràng, hướng nghiên cứu thiết thực cho AGU.', 'green', N'Đạt'),
+(1, N'Báo cáo tiến độ lần 1', '/uploads/Ho So Minh Chung Dao Tao Thac Si AGU.pdf', '2025-04-20', '2025-04-18', N'Đã hoàn thành khảo sát cơ sở dữ liệu và kiến trúc.', 'green', N'Đạt'),
+(1, N'Báo cáo tiến độ lần 2', '/uploads/Ho So Minh Chung Dao Tao Thac Si AGU.pdf', '2025-08-30', NULL, NULL, 'yellow', N'Chờ đánh giá');
 
--- 11. Kiểm tra Turnitin & Chuẩn đầu ra NCKH, Ngoại ngữ
+-- 12. Kiểm tra Turnitin & Chuẩn đầu ra NCKH, Ngoại ngữ
 INSERT INTO [turnitin_checks] ([thesis_id], [file_url], [similarity_score], [status]) VALUES
-(1, '/uploads/turnitin_check_01.pdf', 12.50, N'Đạt');
+(1, '/uploads/Ho So Minh Chung Dao Tao Thac Si AGU.pdf', 12.50, N'Đạt');
 
 INSERT INTO [scientific_publications] ([student_id], [paper_title], [journal_name], [issn_isbn], [paper_url], [ranking], [evidence_file], [status]) VALUES
-(1, N'Nghiên cứu ứng dụng kiến trúc Microservices trong quản lý dữ liệu đào tạo đại học', N'Tạp chí Khoa học Trường Đại học An Giang', '0866-8086', 'https://sj.agu.edu.vn/article/view/1234', N'Tạp chí KH ĐH An Giang', '/uploads/paper_agu_01.pdf', N'Đạt');
+(1, N'Nghiên cứu ứng dụng kiến trúc Microservices trong quản lý dữ liệu đào tạo đại học', N'Tạp chí Khoa học Trường Đại học An Giang', '0866-8086', 'https://sj.agu.edu.vn/article/view/1234', N'Tạp chí KH ĐH An Giang', '/uploads/1793086750178_de-kt.pdf', N'Đạt');
 
 INSERT INTO [language_certificates] ([student_id], [cert_type], [score_achieved], [issue_date], [certificate_file_url], [status]) VALUES
-(1, N'VSTEP Bậc 4 (B2 ĐHQG-HCM)', 'Bậc 4 (6.5/10)', '2024-12-10', '/uploads/vstep_b2_chungchi.pdf', N'Đạt yêu cầu');
+(1, N'VSTEP Bậc 4 (B2 ĐHQG-HCM)', N'Bậc 4 (6.5/10)', '2024-12-10', '/uploads/Ho So Minh Chung Dao Tao Thac Si AGU.pdf', N'Đạt yêu cầu');
 
--- 12. Hội đồng Bảo vệ Luận văn Thạc sĩ tại AGU (Chuẩn 5 Thầy Cô)
+-- 13. Hội đồng Bảo vệ Luận văn Thạc sĩ tại AGU (Chuẩn 5 Thầy Cô)
 INSERT INTO [defense_committees] ([committee_name], [defense_date], [defense_room], [president_id], [reviewer_1_id], [reviewer_2_id], [secretary_id], [member_id]) VALUES
 (N'Hội đồng Đánh giá Luận văn Thạc sĩ Ngành KTPM - Đợt 1', '2025-11-20', N'Phòng Hội thảo 1 - Khu Hiệu bộ AGU (18 Ung Văn Khiêm)', 1, 2, 3, 4, 5);
--- 1: PGS.TS. Đoàn Thanh Nghị (Chủ tịch)
--- 2: TS. Nguyễn Công Trứ (PB1)
--- 3: TS. Huỳnh Phước Hải (PB2)
--- 4: TS. Trần Văn B (Thư ký)
--- 5: TS. Lê Thị D (Ủy viên)
 
 INSERT INTO [thesis_defense_schedules] ([thesis_id], [committee_id], [defense_order], [start_time], [result]) VALUES
 (1, 1, 1, '08:30:00', N'Chưa bảo vệ');
+
+-- 14. Thông báo hệ thống & Khảo sát chất lượng (QA Survey)
+INSERT INTO [notifications] ([title], [content], [target_role_id], [target_user_id]) VALUES
+(N'Thông báo nộp báo cáo tiến độ luận văn đợt 2', N'Đề nghị các học viên khóa K2024-2026 hoàn tất nộp file PDF báo cáo tiến độ lần 2 đúng hạn trên hệ thống.', 3, NULL),
+(N'Nhắc nhở kiểm tra tỷ lệ trùng lặp Turnitin', N'Quy chế đào tạo Thạc sĩ AGU yêu cầu tỷ lệ trùng lặp Turnitin <= 20% trước khi xét duyệt ra Hội đồng.', 3, 7);
+
+INSERT INTO [qa_survey_templates] ([template_code], [title], [survey_type], [is_published]) VALUES
+('QA_HP_2026', N'Khảo sát chất lượng giảng dạy học phần Cao học', N'Học phần', 1);
+
+INSERT INTO [qa_survey_questions] ([template_id], [question_text], [scale_type]) VALUES
+(1, N'Nội dung học phần cập nhật, sát với định hướng nghiên cứu/ứng dụng Thạc sĩ.', N'Likert 5'),
+(1, N'Giảng viên truyền đạt rõ ràng, hỗ trợ tốt phương pháp nghiên cứu khoa học.', N'Likert 5'),
+(1, N'Tài liệu tham khảo và cơ sở vật chất phục vụ học tập đầy đủ.', N'Likert 5');
+
+INSERT INTO [qa_survey_campaigns] ([template_id], [class_id], [start_date], [end_date]) VALUES
+(1, 1, '2024-09-01', '2027-12-31');
 GO
 
 PRINT N'=============================================================================';

@@ -96,6 +96,7 @@ export interface LecturerStudent {
 export interface StudentInfo {
   student_id: number;
   student_code: string;
+  curriculum_id?: number;
   academic_status: string;
   enrollment_date: string;
   full_name: string;

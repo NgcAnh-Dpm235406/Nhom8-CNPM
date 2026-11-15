@@ -20,4 +20,7 @@ router.post('/lecturers', adminController.createLecturer);
 router.put('/lecturers/:id', adminController.updateLecturer);
 router.delete('/lecturers/:id', adminController.deleteLecturer);
 
+router.get('/students/:id/outputs', adminController.getStudentOutputs);
+router.put('/publications/:pubId/review', adminController.reviewPublication);
+router.put('/language-certs/:certId/review', adminController.reviewLanguageCert);
 module.exports = router;

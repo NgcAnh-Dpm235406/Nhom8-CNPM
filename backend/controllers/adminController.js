@@ -825,3 +825,87 @@ exports.resetStudentPassword = async (req, res) => {
         return sendDatabaseError(res, err);
     }
 };
+// Lấy danh sách Bài báo KH và Chứng chỉ Ngoại ngữ của 1 học viên
+exports.getStudentOutputs = async (req, res) => {
+    const studentId = Number(req.params.id);
+    if (!Number.isSafeInteger(studentId) || studentId <= 0) {
+        return res.status(400).json({ success: false, message: 'Mã học viên không hợp lệ.' });
+    }
+    try {
+        const pool = await poolPromise;
+        const [pubResult, certResult] = await Promise.all([
+            pool.request()
+                .input('studentId', sql.BigInt, studentId)
+                .query(`SELECT * FROM scientific_publications WHERE student_id = @studentId ORDER BY publication_id DESC`),
+            pool.request()
+                .input('studentId', sql.BigInt, studentId)
+                .query(`SELECT * FROM language_certificates WHERE student_id = @studentId ORDER BY cert_id DESC`)
+        ]);
+
+        return res.json({
+            success: true,
+            publications: pubResult.recordset || [],
+            languageCerts: certResult.recordset || []
+        });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+// Admin duyệt Bài báo khoa học ('Đạt' hoặc 'Không đạt')
+exports.reviewPublication = async (req, res) => {
+    const pubId = Number(req.params.pubId);
+    const { status, adminNote } = req.body;
+    const validStatuses = ['Chờ thẩm định', 'Đạt', 'Không đạt'];
+
+    if (!Number.isSafeInteger(pubId) || pubId <= 0 || !validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, message: 'Dữ liệu thẩm định bài báo không hợp lệ.' });
+    }
+
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('pubId', sql.BigInt, pubId)
+            .input('status', sql.NVarChar(30), status)
+            .input('adminNote', sql.NVarChar(500), adminNote || null)
+            .query(`
+                UPDATE scientific_publications
+                SET status = @status, admin_note = @adminNote
+                WHERE publication_id = @pubId
+            `);
+
+        await writeAuditLog(req.user.user_id, 'REVIEW_PUBLICATION', 'scientific_publications', pubId, null, { status, adminNote }, req.ip);
+        return res.json({ success: true, message: `Đã cập nhật trạng thái bài báo: ${status}.` });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+// Admin duyệt Chứng chỉ ngoại ngữ ('Đạt yêu cầu' hoặc 'Không hợp lệ')
+exports.reviewLanguageCert = async (req, res) => {
+    const certId = Number(req.params.certId);
+    const { status, adminNote } = req.body;
+    const validStatuses = ['Chờ xét duyệt', 'Đạt yêu cầu', 'Không hợp lệ'];
+
+    if (!Number.isSafeInteger(certId) || certId <= 0 || !validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, message: 'Dữ liệu xét duyệt chứng chỉ không hợp lệ.' });
+    }
+
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('certId', sql.BigInt, certId)
+            .input('status', sql.NVarChar(30), status)
+            .input('adminNote', sql.NVarChar(500), adminNote || null)
+            .query(`
+                UPDATE language_certificates
+                SET status = @status, admin_note = @adminNote
+                WHERE cert_id = @certId
+            `);
+
+        await writeAuditLog(req.user.user_id, 'REVIEW_LANGUAGE_CERT', 'language_certificates', certId, null, { status, adminNote }, req.ip);
+        return res.json({ success: true, message: `Đã cập nhật trạng thái chứng chỉ ngoại ngữ: ${status}.` });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
