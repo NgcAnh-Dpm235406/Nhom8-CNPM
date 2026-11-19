@@ -1,4 +1,4 @@
-const { sql, poolPromise, writeAuditLog } = require('../config/db');
+const { sql, poolPromise, writeAuditLog, createNotification } = require('../config/db');
 const bcrypt = require('bcryptjs');
 
 function getStudentUsernameBase(fullName) {
@@ -111,6 +111,12 @@ exports.createCampaign = async (req, res) => {
             req.ip
         );
 
+        await createNotification({
+            title: 'Đợt tuyển sinh mới',
+            content: `Đợt tuyển sinh "${campaign.campaign_name}" năm ${campaign.academic_year} đã được mở từ ${campaign.start_date} đến ${campaign.end_date}.`,
+            targetRoleId: 1
+        });
+
         return res.status(201).json({
             success: true,
             message: 'Đã tạo đợt tuyển sinh thành công.',
@@ -200,6 +206,12 @@ exports.registerProfile = async (req, res) => {
 
         const profileId = result.recordset[0].profile_id;
         const profileCode = `THS-${new Date().getFullYear()}-${String(profileId).padStart(4, '0')}`;
+
+        await createNotification({
+            title: 'Hồ sơ dự tuyển mới',
+            content: `Thí sinh ${fullName.trim()} vừa nộp hồ sơ dự tuyển cho đợt ${campaignIdNumber}. Vui lòng kiểm tra và xét duyệt hồ sơ.`,
+            targetRoleId: 1
+        });
 
         res.status(201).json({
             success: true,
@@ -343,6 +355,13 @@ exports.reviewProfile = async (req, res) => {
 
         await writeAuditLog(req.user?.user_id, 'REVIEW_ADMISSION_PROFILE', 'admission_profiles', id, null, { status }, req.ip);
 
+        const notificationTitle = status === 'Đạt yêu cầu' ? 'Hồ sơ đạt yêu cầu' : status === 'Cần bổ sung' ? 'Cần bổ sung hồ sơ' : 'Hồ sơ không đạt';
+        await createNotification({
+            title: notificationTitle,
+            content: `Hồ sơ tuyển sinh #${id} đã được cập nhật trạng thái: ${status}.`,
+            targetRoleId: 1
+        });
+
         res.json({ success: true, message: `Đã cập nhật trạng thái hồ sơ thành: ${status}` });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -446,20 +465,19 @@ exports.admitCandidate = async (req, res) => {
             .input('profileId', sql.BigInt, candidate.profile_id)
             .query(`UPDATE admission_profiles SET admission_status = N'Đã nhập học', status = N'Đạt yêu cầu' WHERE profile_id = @profileId`);
 
-        // 7. Tạo học phí kỳ 1 mặc định (14.500.000 VNĐ)
-        await transaction.request()
-            .input('studentId', sql.BigInt, newStudentId)
-            .input('semesterId', sql.Int, 1)
-            .input('baseAmount', sql.Decimal(12, 2), 14500000.00)
-            .query(`
-                INSERT INTO tuition_fees (student_id, semester_id, base_amount, due_date, paid_amount, status)
-                VALUES (@studentId, @semesterId, @baseAmount, DATEADD(month, 1, GETDATE()), 0, N'Chưa thanh toán')
-            `);
+        // Không tạo hóa đơn học phí mặc định khi mới được công nhận trúng tuyển.
+        // Chỉ tạo học phí khi học viên thực sự đăng ký học phần trong một kỳ học.
 
         await transaction.commit();
 
         // 8. Ghi Audit Log
         await writeAuditLog(req.user?.user_id, 'ADMIT_STUDENT', 'students', newStudentId, null, { studentCode, username }, req.ip);
+
+        await createNotification({
+            title: 'Công nhận trúng tuyển',
+            content: `Học viên ${candidate.full_name} đã được công nhận trúng tuyển với mã học viên ${studentCode}.`,
+            targetRoleId: 1
+        });
 
         return res.status(201).json({
             success: true,

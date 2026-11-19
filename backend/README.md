@@ -79,6 +79,11 @@ DB_SERVER=localhost
 DB_NAME=agu_postgrad_db
 FALLBACK_DRIVER=SQL Server
 JWT_SECRET=replace-with-a-long-random-secret
+BANK_NAME=
+BANK_ACCOUNT_NAME=
+BANK_ACCOUNT_NUMBER=
+BANK_BRANCH=
+BANK_QR_IMAGE_URL=
 ```
 
 - `DB_SERVER`: tên server hoặc instance SQL Server, ví dụ `localhost`, `localhost\\SQLEXPRESS`.
@@ -86,6 +91,7 @@ JWT_SECRET=replace-with-a-long-random-secret
 - `DB_DRIVER`: driver chính; nếu kết nối thất bại, ứng dụng thử `FALLBACK_DRIVER`.
 - `PORT`: cổng HTTP; mặc định `5000`.
 - `JWT_SECRET`: đặt một chuỗi ngẫu nhiên, dài và riêng cho môi trường của bạn. Không commit file `.env` hoặc chia sẻ khóa này.
+- `BANK_*`: thông tin tài khoản nhận học phí và URL ảnh QR do trường cung cấp; để trống thì giao diện sẽ báo chưa cấu hình, không hiển thị thông tin giả.
 
 Ứng dụng sử dụng Windows Trusted Connection để kết nối SQL Server. Hãy cài driver ODBC tương ứng và cấp quyền database cho tài khoản Windows chạy ứng dụng.
 
@@ -136,7 +142,7 @@ Authorization: Bearer <token>
 | Xác thực | `/api/auth` | Đăng nhập, hồ sơ, đổi mật khẩu, thông báo |
 | Tuyển sinh | `/api/admission` | Đợt tuyển sinh, nộp hồ sơ, tra cứu, xét duyệt, nhập học |
 | Đào tạo | `/api/academic` | Ngành, chương trình, học phần, giảng viên, học kỳ và lớp |
-| Học viên | `/api/students` | Hồ sơ cá nhân, học phí, đăng ký học phần, thời khóa biểu và điểm |
+| Học viên | `/api/students` | Hồ sơ cá nhân, học phí, nộp biên lai, hội đồng bảo vệ, đăng ký học phần, thời khóa biểu và điểm |
 | Luận văn | `/api/thesis` | Đề tài, yêu cầu GVHD, tiến độ và tài liệu luận văn |
 | Hội đồng | `/api/committee` | Điều kiện bảo vệ, lịch bảo vệ và đánh giá |
 | Khảo sát | `/api/surveys` | Câu hỏi, chiến dịch khảo sát, gửi phản hồi và thống kê |
@@ -149,7 +155,7 @@ Các route có xác thực được phân quyền theo vai trò ở middleware. 
 
 - Tệp tải lên được lưu trong `agu-postgrad-backend/uploads/`.
 - Tệp có thể được truy cập qua đường dẫn `/uploads/<tên-tệp>`.
-- Middleware giới hạn kích thước tệp tối đa **25 MB** và lọc định dạng tài liệu được hỗ trợ.
+- Tài liệu luận văn tối đa **25 MB**; ảnh biên lai học phí nhận JPG/PNG/WEBP, tối đa **5 MB**.
 - Không xóa thư mục `uploads/` nếu cần giữ lại minh chứng đã tải lên.
 
 ## 10. Cấu hình khi triển khai

@@ -129,6 +129,44 @@ exports.registerAdvisor = async (req, res) => {
     }
 };
 
+// 1.1. Học viên hủy yêu cầu đăng ký GVHD đang chờ duyệt (POST /api/thesis/cancel-advisor-request)
+exports.cancelAdvisorRequest = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const studentId = await resolveStudentId(pool, req.user);
+        if (!studentId) {
+            return res.status(400).json({ success: false, message: 'Thiếu thông tin học viên!' });
+        }
+
+        const pending = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT advisor_assignment_id, lecturer_id
+                FROM advisor_assignments
+                WHERE student_id = @studentId AND status = N'Chờ GVHD duyệt'
+            `);
+
+        if (pending.recordset.length === 0) {
+            return res.status(400).json({ success: false, message: 'Bạn không có yêu cầu nào đang chờ phê duyệt.' });
+        }
+
+        const assignmentId = pending.recordset[0].advisor_assignment_id;
+        await pool.request()
+            .input('assignmentId', sql.BigInt, assignmentId)
+            .query(`DELETE FROM advisor_assignments WHERE advisor_assignment_id = @assignmentId`);
+
+        await writeAuditLog(req.user.user_id, 'CANCEL_ADVISOR_REQUEST', 'advisor_assignments', assignmentId, null, null, req.ip);
+
+        return res.json({
+            success: true,
+            message: 'Đã hủy yêu cầu đăng ký GVHD thành công. Bạn có thể chọn giảng viên khác.'
+        });
+    } catch (err) {
+        console.error('Lỗi hủy yêu cầu GVHD:', err);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 // 2. Giảng viên xem danh sách yêu cầu đăng ký hướng dẫn chờ duyệt (GET /api/faculty/advising-requests)
 // Phục vụ màn hình FacultyDashboard.tsx
 exports.getFacultyAdvisingRequests = async (req, res) => {
@@ -393,7 +431,8 @@ exports.getMyThesisProgress = async (req, res) => {
         const advisorRes = await pool.request()
             .input('studentId', sql.BigInt, studentId)
             .query(`
-                SELECT aa.role, aa.status, l.full_name AS lecturer_name, l.degree, l.email, l.phone
+                SELECT aa.advisor_assignment_id, aa.lecturer_id, aa.role, aa.status,
+                       l.full_name AS lecturer_name, l.degree, l.email, l.phone
                 FROM advisor_assignments aa
                 JOIN lecturers l ON aa.lecturer_id = l.lecturer_id
                 WHERE aa.student_id = @studentId

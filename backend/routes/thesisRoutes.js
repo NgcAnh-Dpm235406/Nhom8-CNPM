@@ -6,6 +6,7 @@ const { verifyToken, requireRoles } = require('../middlewares/authMiddleware');
 
 // Đăng ký và Quota GVHD
 router.post('/register-advisor', verifyToken, requireRoles('STUDENT'), thesisController.registerAdvisor);
+router.post('/cancel-advisor-request', verifyToken, requireRoles('STUDENT'), thesisController.cancelAdvisorRequest);
 router.get('/faculty/advising-requests', verifyToken, requireRoles('LECTURER', 'ADMIN'), thesisController.getFacultyAdvisingRequests);
 router.put('/faculty/advising-requests/:id', verifyToken, requireRoles('LECTURER', 'ADMIN'), thesisController.respondAdvisingRequest);
 

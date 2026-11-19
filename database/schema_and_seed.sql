@@ -223,6 +223,10 @@ CREATE TABLE [tuition_fees] (
     [late_penalty_fee] DECIMAL(12,2) DEFAULT 0.00,
     [outstanding_balance] AS ([base_amount] + [late_penalty_fee] - [paid_amount]) PERSISTED,
     [status] NVARCHAR(30) DEFAULT N'Chưa thanh toán' CHECK ([status] IN (N'Chưa thanh toán', N'Đã thanh toán một phần', N'Hoàn thành')),
+    [payment_slip_file] NVARCHAR(255) NULL,
+    [payment_slip_status] NVARCHAR(30) NULL CHECK ([payment_slip_status] IN (N'Chờ xác nhận', N'Đã xác nhận', N'Từ chối')),
+    [payment_slip_submitted_at] DATETIME NULL,
+    [payment_slip_note] NVARCHAR(500) NULL,
     CONSTRAINT [FK_tuition_students] FOREIGN KEY ([student_id]) REFERENCES [students]([student_id]) ON DELETE CASCADE,
     CONSTRAINT [FK_tuition_semesters] FOREIGN KEY ([semester_id]) REFERENCES [semesters]([semester_id])
 );

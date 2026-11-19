@@ -14,10 +14,16 @@ import {
   Award,
   ExternalLink,
   RefreshCw,
-  PlusCircle
+  PlusCircle,
+  Landmark,
+  ReceiptText,
+  Upload,
+  X,
+  FileDown
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useBrowserAlert } from '../../hooks/useBrowserAlert';
+import { StudentSupportSection, ThesisRoadmap } from './StudentRoadmapAndSupport';
 import type {
   CourseClassRecord,
   CurriculumCourseItem,
@@ -26,8 +32,10 @@ import type {
   Lecturer,
   PublicationRecord,
   StudentAdvisor,
+  StudentDefenseResult,
   StudentGradeRecord,
   StudentInfo,
+  StudentPaymentInfo,
   StudentRegisteredCourse,
   StudentThesisProgress,
   StudentTuitionRecord,
@@ -35,23 +43,36 @@ import type {
   TurnitinCheckRecord
 } from '../../types';
 
-type DashboardTab = 'thesis' | 'gatekeeper' | 'courses' | 'grades-tuition';
+type DashboardTab = 'thesis' | 'gatekeeper' | 'courses' | 'grades-tuition' | 'forms' | 'defense';
+
+const getSavedDashboardTab = (): DashboardTab => {
+  const savedTab = sessionStorage.getItem('agu_student_subtab');
+  if (
+    savedTab === 'thesis' ||
+    savedTab === 'gatekeeper' ||
+    savedTab === 'courses' ||
+    savedTab === 'grades-tuition' ||
+    savedTab === 'forms' ||
+    savedTab === 'defense'
+  ) {
+    return savedTab;
+  }
+  if (savedTab === 'resources-defense') return 'defense';
+  return 'thesis';
+};
 
 export const StudentDashboard = () => {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('thesis');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(getSavedDashboardTab);
 
   useEffect(() => {
-    const savedSubTab = sessionStorage.getItem('agu_student_subtab') as DashboardTab | null;
-    if (savedSubTab) {
-      setActiveTab(savedSubTab);
-      sessionStorage.removeItem('agu_student_subtab');
-    }
+    sessionStorage.removeItem('agu_student_subtab');
     const handleSubTabNavigate = (e: Event) => {
       const customEvent = e as CustomEvent<DashboardTab>;
       if (customEvent.detail) {
         setActiveTab(customEvent.detail);
       }
     };
+
     window.addEventListener('agu:student-tab', handleSubTabNavigate);
     return () => window.removeEventListener('agu:student-tab', handleSubTabNavigate);
   }, []);
@@ -59,6 +80,8 @@ export const StudentDashboard = () => {
   const [student, setStudent] = useState<StudentInfo | null>(null);
   const [thesis, setThesis] = useState<StudentThesisProgress | null>(null);
   const [advisor, setAdvisor] = useState<StudentAdvisor | null>(null);
+  const [defense, setDefense] = useState<StudentDefenseResult | null>(null);
+  const [paymentInfo, setPaymentInfo] = useState<StudentPaymentInfo | null>(null);
   const [milestones, setMilestones] = useState<ThesisMilestoneSubmission[]>([]);
   const [turnitin, setTurnitin] = useState<TurnitinCheckRecord | null>(null);
   const [publications, setPublications] = useState<PublicationRecord[]>([]);
@@ -84,6 +107,8 @@ export const StudentDashboard = () => {
   const [grades, setGrades] = useState<StudentGradeRecord[]>([]);
   const [tuitionList, setTuitionList] = useState<StudentTuitionRecord[]>([]);
   const [totalDebt, setTotalDebt] = useState(0);
+  const [selectedTuition, setSelectedTuition] = useState<StudentTuitionRecord | null>(null);
+  const [paymentSlipFile, setPaymentSlipFile] = useState<File | null>(null);
 
   // Modal / Form state cho các hành động nộp minh chứng
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -141,11 +166,13 @@ export const StudentDashboard = () => {
       setLecturers(lecturerResult.lecturers);
 
       // Tải song song danh sách kỳ học và thời khóa biểu
-      const [semRes, schedRes, gradeRes, tuitionRes] = await Promise.all([
+      const [semRes, schedRes, gradeRes, tuitionRes, defenseRes, paymentInfoRes] = await Promise.all([
         api.academic.getSemesters(),
         api.student.getSchedule(),
         api.student.getGrades(),
-        api.student.getTuition()
+        api.student.getTuition(),
+        api.student.getDefenseResult(),
+        api.student.getPaymentInfo()
       ]);
 
       if (semRes.success && semRes.semesters.length > 0) {
@@ -160,6 +187,8 @@ export const StudentDashboard = () => {
         setTuitionList(tuitionRes.tuitionList);
         setTotalDebt(tuitionRes.totalDebt);
       }
+      if (defenseRes.success) setDefense(defenseRes.defense);
+      if (paymentInfoRes.success) setPaymentInfo(paymentInfoRes.paymentInfo);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không thể tải dữ liệu học viên.');
     } finally {
@@ -237,6 +266,22 @@ export const StudentDashboard = () => {
       await loadDashboard();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể gửi yêu cầu hướng dẫn.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelAdvisorRequest = async () => {
+    setIsSubmitting(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api.thesis.cancelAdvisorRequest();
+      if (!result.success) throw new Error(result.message || 'Không thể hủy yêu cầu GVHD.');
+      setNotice(result.message);
+      await loadDashboard();
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : 'Không thể hủy yêu cầu GVHD.');
     } finally {
       setIsSubmitting(false);
     }
@@ -391,17 +436,26 @@ export const StudentDashboard = () => {
     }
   };
 
-  // Thanh toán học phí demo
-  const handlePayTuition = async (tuitionId: number, amount: number) => {
+  const handleSubmitPaymentSlip = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedTuition || !paymentSlipFile) {
+      setError('Vui lòng chọn ảnh biên lai chuyển khoản.');
+      return;
+    }
     setIsSubmitting(true);
     setError('');
+    setNotice('');
     try {
-      const res = await api.student.payTuition(tuitionId, amount);
+      const formData = new FormData();
+      formData.append('payment_slip', paymentSlipFile);
+      const res = await api.student.submitPaymentSlip(selectedTuition.tuition_id, formData);
       if (!res.success) throw new Error(res.message);
-      window.alert(res.message);
+      setNotice(res.message);
+      setSelectedTuition(null);
+      setPaymentSlipFile(null);
       await loadDashboard();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi khi thanh toán học phí.');
+      setError(err instanceof Error ? err.message : 'Lỗi khi gửi biên lai học phí.');
     } finally {
       setIsSubmitting(false);
     }
@@ -453,13 +507,33 @@ export const StudentDashboard = () => {
               ) : (
                 <p className="font-semibold text-slate-500">Chưa có GVHD</p>
               )}
+
             </div>
           </div>
         </div>
       )}
 
-      {/* Thanh điều hướng 4 Tab chức năng */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+      {hasPendingAdvisor && advisor && (
+        <section className="flex flex-col justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="font-semibold text-amber-900">Yêu cầu GVHD đang chờ phản hồi</p>
+            <p className="mt-1 text-sm text-amber-800">
+              {advisor.degree} {advisor.lecturer_name}. Bạn có thể hủy yêu cầu để chọn giảng viên khác.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleCancelAdvisorRequest()}
+            disabled={isSubmitting}
+            className="shrink-0 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {isSubmitting ? 'Đang hủy...' : 'Hủy yêu cầu / Đổi GVHD'}
+          </button>
+        </section>
+      )}
+
+      {/* Thanh điều hướng 6 khu vực chức năng */}
+      <div className="flex flex-wrap gap-2 overflow-x-auto border-b border-slate-200 pb-2">
         <button
           type="button"
           onClick={() => setActiveTab('thesis')}
@@ -511,13 +585,52 @@ export const StudentDashboard = () => {
           <CreditCard className="h-4 w-4" />
           <span>4. Bảng điểm & Học phí</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('forms')}
+          className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition ${
+            activeTab === 'forms'
+              ? 'bg-sky-600 text-white shadow'
+              : 'bg-white text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <FileDown className="h-4 w-4" />
+          <span>5. Biểu mẫu</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('defense')}
+          className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition ${
+            activeTab === 'defense'
+              ? 'bg-sky-600 text-white shadow'
+              : 'bg-white text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Award className="h-4 w-4" />
+          <span>6. Hội đồng</span>
+        </button>
       </div>
+
+      {(activeTab === 'forms' || activeTab === 'defense') && (
+        <StudentSupportSection
+          section={activeTab}
+          defense={defense}
+          defenseLoading={isLoading}
+        />
+      )}
 
       {/* ============================================================== */}
       {/* TAB 1: LUẬN VĂN & MỐC TIẾN ĐỘ 5 BƯỚC                            */}
       {/* ============================================================== */}
       {activeTab === 'thesis' && (
         <div className="space-y-6">
+          <ThesisRoadmap
+            advisor={advisor}
+            thesis={thesis}
+            milestones={milestones}
+            turnitin={turnitin}
+            defense={defense}
+          />
           {/* Đăng ký GVHD nếu chưa có */}
           {!hasActiveAdvisor && !hasPendingAdvisor && (
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1127,6 +1240,7 @@ export const StudentDashboard = () => {
                       <th className="p-3">Phạt trễ</th>
                       <th className="p-3">Còn nợ</th>
                       <th className="p-3">Trạng thái</th>
+                      <th className="p-3">Biên lai</th>
                       <th className="p-3 text-right">Thanh toán</th>
                     </tr>
                   </thead>
@@ -1146,15 +1260,45 @@ export const StudentDashboard = () => {
                             {t.status}
                           </span>
                         </td>
+                        <td className="p-3">
+                          {t.payment_slip_file ? (
+                            <div className="space-y-1">
+                              <a
+                                href={t.payment_slip_file}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-sky-700 hover:underline"
+                              >
+                                Xem ảnh
+                              </a>
+                              <p className={`text-[10px] font-semibold ${
+                                t.payment_slip_status === 'Đã xác nhận'
+                                  ? 'text-emerald-700'
+                                  : t.payment_slip_status === 'Từ chối'
+                                    ? 'text-rose-700'
+                                    : 'text-amber-700'
+                              }`}>
+                                {t.payment_slip_status}
+                              </p>
+                              {t.payment_slip_note && <p className="max-w-40 text-[10px] text-rose-700">{t.payment_slip_note}</p>}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">Chưa gửi</span>
+                          )}
+                        </td>
                         <td className="p-3 text-right">
                           {Number(t.outstanding_balance) > 0 ? (
                             <button
                               type="button"
-                              disabled={isSubmitting}
-                              onClick={() => handlePayTuition(t.tuition_id, Number(t.outstanding_balance))}
-                              className="rounded-lg bg-emerald-600 px-3 py-1 font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                              disabled={isSubmitting || t.payment_slip_status === 'Chờ xác nhận'}
+                              onClick={() => {
+                                setPaymentSlipFile(null);
+                                setSelectedTuition(t);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              Thanh toán ngay
+                              <ReceiptText className="h-3.5 w-3.5" />
+                              {t.payment_slip_status === 'Chờ xác nhận' ? 'Đang xác nhận' : 'Gửi biên lai'}
                             </button>
                           ) : (
                             <span className="text-xs font-semibold text-emerald-700">Đã xong</span>
@@ -1166,6 +1310,99 @@ export const StudentDashboard = () => {
                 </table>
               </div>
             )}
+          </section>
+        </div>
+      )}
+
+      {selectedTuition && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payment-slip-title"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Thanh toán học phí</p>
+                <h2 id="payment-slip-title" className="mt-1 text-xl font-bold text-slate-900">Chuyển khoản và gửi biên lai</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {selectedTuition.semester_name} · Số tiền còn nợ: <strong>{Number(selectedTuition.outstanding_balance).toLocaleString('vi-VN')} VNĐ</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTuition(null)}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                aria-label="Đóng hộp thoại nộp biên lai"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {paymentInfo?.bankName && paymentInfo.accountName && paymentInfo.accountNumber ? (
+              <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto]">
+                <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
+                  <div className="mb-3 flex items-center gap-2 font-bold text-sky-900">
+                    <Landmark className="h-5 w-5" />
+                    Tài khoản nhận học phí
+                  </div>
+                  <dl className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-4"><dt className="text-slate-600">Ngân hàng</dt><dd className="text-right font-semibold">{paymentInfo.bankName}</dd></div>
+                    <div className="flex justify-between gap-4"><dt className="text-slate-600">Chủ tài khoản</dt><dd className="text-right font-semibold">{paymentInfo.accountName}</dd></div>
+                    <div className="flex justify-between gap-4"><dt className="text-slate-600">Số tài khoản</dt><dd className="text-right font-mono font-bold">{paymentInfo.accountNumber}</dd></div>
+                    {paymentInfo.branch && <div className="flex justify-between gap-4"><dt className="text-slate-600">Chi nhánh</dt><dd className="text-right font-semibold">{paymentInfo.branch}</dd></div>}
+                    <div className="border-t border-sky-200 pt-2">
+                      <dt className="text-slate-600">Nội dung chuyển khoản</dt>
+                      <dd className="mt-1 font-mono font-bold text-sky-900">HP {student?.student_code} HK {selectedTuition.semester_name}</dd>
+                    </div>
+                  </dl>
+                </div>
+                {paymentInfo.qrImageUrl && (
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-3">
+                    <img src={paymentInfo.qrImageUrl} alt="Mã QR thanh toán học phí" className="h-40 w-40 object-contain" />
+                    <span className="text-xs font-medium text-slate-600">Quét mã để chuyển khoản</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p role="status" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Nhà trường chưa cấu hình thông tin tài khoản nhận học phí. Vui lòng liên hệ Phòng Sau Đại học trước khi chuyển khoản.
+              </p>
+            )}
+
+            <form onSubmit={handleSubmitPaymentSlip} className="mt-5 space-y-4">
+              <label className="block text-sm font-semibold text-slate-700">
+                Ảnh chụp biên lai giao dịch (JPG, PNG, WEBP; tối đa 5 MB)
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  onChange={event => setPaymentSlipFile(event.target.files?.[0] || null)}
+                  className="mt-2 block w-full rounded-xl border border-slate-300 p-3 text-sm"
+                  required
+                />
+              </label>
+              <p className="text-xs leading-relaxed text-slate-500">
+                Gửi ảnh biên lai không tự động xác nhận thanh toán. Phòng Sau Đại học sẽ đối chiếu giao dịch và cập nhật trạng thái học phí.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTuition(null)}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !paymentSlipFile}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Upload className="h-4 w-4" />
+                  {isSubmitting ? 'Đang gửi...' : 'Gửi biên lai'}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       )}

@@ -121,6 +121,8 @@ export interface StudentThesisProgress {
 }
 
 export interface StudentAdvisor {
+  advisor_assignment_id: number;
+  lecturer_id: number;
   role: string;
   status: string;
   lecturer_name: string;
@@ -332,6 +334,36 @@ export interface StudentTuitionRecord {
   outstanding_balance: number;
   status: string;
   semester_name: string;
+  payment_slip_file: string | null;
+  payment_slip_status: 'Chờ xác nhận' | 'Đã xác nhận' | 'Từ chối' | null;
+  payment_slip_submitted_at: string | null;
+  payment_slip_note: string | null;
+}
+
+export interface StudentPaymentInfo {
+  bankName: string | null;
+  accountName: string | null;
+  accountNumber: string | null;
+  branch: string | null;
+  qrImageUrl: string | null;
+}
+
+export interface StudentDefenseResult {
+  defense_schedule_id: number;
+  committee_name: string;
+  defense_date: string;
+  defense_room: string;
+  start_time: string;
+  defense_order: number;
+  average_score: number | null;
+  result: string | null;
+  members: { role: string; full_name: string; degree: string }[];
+  evaluations: {
+    role_in_committee: string;
+    full_name: string;
+    total_score: number;
+    feedback: string | null;
+  }[];
 }
 
 export interface FacultySubmissionRecord {

@@ -154,12 +154,22 @@ exports.getTuition = async (req, res) => {
                     t.late_penalty_fee,
                     t.outstanding_balance,
                     t.status,
+                    t.payment_slip_file,
+                    t.payment_slip_status,
+                    t.payment_slip_submitted_at,
+                    t.payment_slip_note,
                     sem.semester_name,
                     sem.start_date,
                     sem.end_date
                 FROM tuition_fees t
                 JOIN semesters sem ON t.semester_id = sem.semester_id
                 WHERE t.student_id = @studentId
+                  AND (
+                    t.base_amount > 0
+                    OR t.paid_amount > 0
+                    OR t.late_penalty_fee > 0
+                    OR t.payment_slip_file IS NOT NULL
+                  )
                 ORDER BY sem.semester_id DESC
             `);
 
@@ -175,48 +185,165 @@ exports.getTuition = async (req, res) => {
     }
 };
 
-// 3. Đóng học phí / Cập nhật thanh toán (POST /api/students/tuition/pay)
-exports.payTuition = async (req, res) => {
+exports.getPaymentInfo = async (req, res) => {
+    const qrImageUrl = process.env.BANK_QR_IMAGE_URL || null;
+    return res.json({
+        success: true,
+        paymentInfo: {
+            bankName: process.env.BANK_NAME || null,
+            accountName: process.env.BANK_ACCOUNT_NAME || null,
+            accountNumber: process.env.BANK_ACCOUNT_NUMBER || null,
+            branch: process.env.BANK_BRANCH || null,
+            qrImageUrl
+        }
+    });
+};
+
+exports.submitPaymentSlip = async (req, res) => {
     try {
-        const { tuitionId, amount } = req.body;
-        if (!tuitionId || !amount || amount <= 0) {
-            return res.status(400).json({ success: false, message: 'Số tiền nộp không hợp lệ!' });
+        const tuitionId = Number(req.params.tuitionId);
+        if (!Number.isSafeInteger(tuitionId) || tuitionId <= 0) {
+            return res.status(400).json({ success: false, message: 'Mã học phí không hợp lệ.' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'Vui lòng đính kèm ảnh biên lai chuyển khoản.' });
         }
 
         const pool = await poolPromise;
-        const tuitionRes = await pool.request()
-            .input('tuitionId', sql.BigInt, tuitionId)
-            .query(`SELECT base_amount, paid_amount, late_penalty_fee FROM tuition_fees WHERE tuition_id = @tuitionId`);
-
-        if (tuitionRes.recordset.length === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy hóa đơn học phí!' });
+        const studentId = await resolveStudentId(pool, req.user);
+        if (!studentId) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ học viên.' });
         }
 
-        const record = tuitionRes.recordset[0];
-        const newPaid = Number(record.paid_amount) + Number(amount);
-        const totalDue = Number(record.base_amount) + Number(record.late_penalty_fee);
-        const newStatus = newPaid >= totalDue ? 'Hoàn thành' : 'Đã thanh toán một phần';
+        const invoice = await pool.request()
+            .input('tuitionId', sql.BigInt, tuitionId)
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT tuition_id, outstanding_balance
+                FROM tuition_fees
+                WHERE tuition_id = @tuitionId AND student_id = @studentId
+            `);
 
+        if (invoice.recordset.length === 0) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hóa đơn học phí của bạn.' });
+        }
+        if (Number(invoice.recordset[0].outstanding_balance) <= 0) {
+            return res.status(400).json({ success: false, message: 'Hóa đơn này đã được thanh toán đầy đủ.' });
+        }
+
+        const fileUrl = `/uploads/${req.file.filename}`;
         await pool.request()
             .input('tuitionId', sql.BigInt, tuitionId)
-            .input('paidAmount', sql.Decimal(12, 2), newPaid)
-            .input('status', sql.NVarChar, newStatus)
-            .query(`UPDATE tuition_fees SET paid_amount = @paidAmount, status = @status WHERE tuition_id = @tuitionId`);
+            .input('studentId', sql.BigInt, studentId)
+            .input('fileUrl', sql.NVarChar(255), fileUrl)
+            .query(`
+                UPDATE tuition_fees
+                SET payment_slip_file = @fileUrl,
+                    payment_slip_status = N'Chờ xác nhận',
+                    payment_slip_submitted_at = GETDATE(),
+                    payment_slip_note = NULL
+                WHERE tuition_id = @tuitionId AND student_id = @studentId
+            `);
 
-        await writeAuditLog(req.user?.user_id, 'PAY_TUITION', 'tuition_fees', tuitionId, { oldPaid: record.paid_amount }, { newPaid, amount }, req.ip);
+        await writeAuditLog(
+            req.user.user_id,
+            'SUBMIT_TUITION_PAYMENT_SLIP',
+            'tuition_fees',
+            tuitionId,
+            null,
+            { fileUrl, status: 'Chờ xác nhận' },
+            req.ip
+        );
 
-        res.json({
+        return res.status(201).json({
             success: true,
-            message: `Ghi nhận thanh toán thành công: ${amount.toLocaleString('vi-VN')} VNĐ!`,
-            newStatus,
-            newPaid
+            message: 'Đã gửi biên lai. Học phí sẽ được cập nhật sau khi Phòng Sau Đại học xác nhận.'
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        console.error('Lỗi gửi biên lai học phí:', err);
+        return res.status(500).json({ success: false, message: 'Không thể gửi biên lai học phí.' });
     }
 };
 
-// 4. Đăng ký học phần (POST /api/students/register-course)
+exports.getMyDefenseResult = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const studentId = await resolveStudentId(pool, req.user);
+        if (!studentId) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ học viên.' });
+        }
+
+        const scheduleResult = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT TOP 1 ds.defense_schedule_id, ds.defense_order, ds.start_time, c.committee_id,
+                       ds.average_score, ds.result, c.committee_name, c.defense_date, c.defense_room,
+                       c.president_id, c.reviewer_1_id, c.reviewer_2_id, c.secretary_id, c.member_id
+                FROM thesis_progress tp
+                JOIN thesis_defense_schedules ds ON ds.thesis_id = tp.thesis_id
+                JOIN defense_committees c ON c.committee_id = ds.committee_id
+                WHERE tp.student_id = @studentId
+                ORDER BY c.defense_date DESC, ds.defense_schedule_id DESC
+            `);
+        if (scheduleResult.recordset.length === 0) {
+            return res.json({ success: true, defense: null });
+        }
+
+        const schedule = scheduleResult.recordset[0];
+        const memberResult = await pool.request()
+            .input('committeeId', sql.Int, schedule.committee_id)
+            .query(`
+                SELECT members.role, l.full_name, l.degree
+                FROM defense_committees c
+                CROSS APPLY (VALUES
+                    (N'Chủ tịch', c.president_id),
+                    (N'Phản biện 1', c.reviewer_1_id),
+                    (N'Phản biện 2', c.reviewer_2_id),
+                    (N'Thư ký', c.secretary_id),
+                    (N'Ủy viên', c.member_id)
+                ) members(role, lecturer_id)
+                JOIN lecturers l ON l.lecturer_id = members.lecturer_id
+                WHERE c.committee_id = @committeeId
+                ORDER BY CASE members.role
+                    WHEN N'Chủ tịch' THEN 1
+                    WHEN N'Phản biện 1' THEN 2
+                    WHEN N'Phản biện 2' THEN 3
+                    WHEN N'Thư ký' THEN 4
+                    ELSE 5
+                END
+            `);
+        const evaluationResult = await pool.request()
+            .input('scheduleId', sql.BigInt, schedule.defense_schedule_id)
+            .query(`
+                SELECT e.role_in_committee, l.full_name, e.total_score, e.feedback
+                FROM defense_evaluations e
+                JOIN lecturers l ON l.lecturer_id = e.lecturer_id
+                WHERE e.defense_schedule_id = @scheduleId
+                ORDER BY e.role_in_committee
+            `);
+
+        return res.json({
+            success: true,
+            defense: {
+                defense_schedule_id: schedule.defense_schedule_id,
+                committee_name: schedule.committee_name,
+                defense_date: schedule.defense_date,
+                defense_room: schedule.defense_room,
+                start_time: schedule.start_time,
+                defense_order: schedule.defense_order,
+                average_score: schedule.average_score,
+                result: schedule.result,
+                members: memberResult.recordset,
+                evaluations: evaluationResult.recordset
+            }
+        });
+    } catch (err) {
+        console.error('Lỗi tải kết quả hội đồng:', err);
+        return res.status(500).json({ success: false, message: 'Không thể tải kết quả hội đồng.' });
+    }
+};
+
+// 3. Đăng ký học phần (POST /api/students/register-course)
 exports.registerCourse = async (req, res) => {
     try {
         const { classId } = req.body;
@@ -272,6 +399,55 @@ exports.registerCourse = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Bạn đã đăng ký học phần này rồi!' });
         }
         res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// 4.1. Hủy đăng ký học phần (DELETE /api/students/cancel-course/:registrationId)
+exports.cancelCourseRegistration = async (req, res) => {
+    try {
+        const { registrationId } = req.params;
+        const pool = await poolPromise;
+        const studentId = await resolveStudentId(pool, req.user);
+        if (!studentId) {
+            return res.status(400).json({ success: false, message: 'Thiếu thông tin học viên!' });
+        }
+
+        const check = await pool.request()
+            .input('regId', sql.BigInt, registrationId)
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT cr.registration_id, sg.final_grade, sg.is_locked, cc.class_name
+                FROM course_registrations cr
+                JOIN course_classes cc ON cr.class_id = cc.class_id
+                LEFT JOIN student_grades sg ON cr.registration_id = sg.registration_id
+                WHERE cr.registration_id = @regId AND cr.student_id = @studentId
+            `);
+
+        if (check.recordset.length === 0) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy lượt đăng ký học phần này.' });
+        }
+
+        const item = check.recordset[0];
+        if (item.is_locked || item.final_grade !== null) {
+            return res.status(400).json({ success: false, message: 'Không thể hủy môn học đã có điểm hoặc đã chốt điểm.' });
+        }
+
+        let transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        await transaction.request()
+            .input('regId', sql.BigInt, registrationId)
+            .query('DELETE FROM student_grades WHERE registration_id = @regId');
+        await transaction.request()
+            .input('regId', sql.BigInt, registrationId)
+            .query('DELETE FROM course_registrations WHERE registration_id = @regId');
+        await transaction.commit();
+
+        await writeAuditLog(req.user.user_id, 'CANCEL_COURSE_REGISTRATION', 'course_registrations', registrationId, null, null, req.ip);
+
+        return res.json({ success: true, message: `Đã hủy đăng ký lớp ${item.class_name} thành công.` });
+    } catch (err) {
+        console.error('Lỗi hủy môn học:', err);
+        return res.status(500).json({ success: false, message: err.message });
     }
 };
 

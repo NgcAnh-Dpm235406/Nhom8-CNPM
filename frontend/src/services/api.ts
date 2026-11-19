@@ -22,8 +22,10 @@ import type {
   Major,
   PublicationRecord,
   StudentAdvisor,
+  StudentDefenseResult,
   StudentGradeRecord,
   StudentInfo,
+  StudentPaymentInfo,
   StudentRegisteredCourse,
   StudentThesisProgress,
   StudentTuitionRecord,
@@ -211,11 +213,13 @@ export const api = {
       request<{ success: boolean; totalDebt: number; tuitionList: StudentTuitionRecord[] }>(
         `/students/tuition${studentId ? `?studentId=${studentId}` : ''}`
       ),
-    payTuition: (tuitionId: number | string, amount: number) =>
-      request<{ success: boolean; message: string; newStatus: string; newPaid: number }>(
-        '/students/tuition/pay',
-        { method: 'POST', body: JSON.stringify({ tuitionId, amount }) }
+    getPaymentInfo: () => request<{ success: boolean; paymentInfo: StudentPaymentInfo }>('/students/payment-info'),
+    submitPaymentSlip: (tuitionId: number | string, formData: FormData) =>
+      request<{ success: boolean; message: string }>(
+        `/students/tuition/${tuitionId}/payment-slip`,
+        { method: 'POST', body: formData }
       ),
+    getDefenseResult: () => request<{ success: boolean; defense: StudentDefenseResult | null }>('/students/defense-result'),
     registerCourse: (classId: number) =>
       request<{ success: boolean; message: string }>('/students/register-course', { method: 'POST', body: JSON.stringify({ classId }) }),
     getSchedule: () => request<{ success: boolean; courses: StudentRegisteredCourse[] }>('/students/schedule'),
@@ -229,6 +233,8 @@ export const api = {
   thesis: {
     registerAdvisor: (body: { lecturerId: number; role?: string }) =>
       request<{ success: boolean; message: string }>('/thesis/register-advisor', { method: 'POST', body: JSON.stringify(body) }),
+    cancelAdvisorRequest: () =>
+      request<{ success: boolean; message: string }>('/thesis/cancel-advisor-request', { method: 'POST' }),
     getFacultyAdvisingRequests: (lecturerId?: number) =>
       request<{ success: boolean } & FacultyAdvisorDashboard>(
         `/thesis/faculty/advising-requests${lecturerId ? `?lecturerId=${lecturerId}` : ''}`

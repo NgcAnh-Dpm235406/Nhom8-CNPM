@@ -6,6 +6,8 @@ Hệ quản trị cơ sở dữ liệu: **Microsoft SQL Server (T-SQL)**.
 - [`schema_and_seed.sql`](./schema_and_seed.sql) (hoặc file gốc [`../SQLQuery2.sql`](../SQLQuery2.sql)).
 - Tự động xóa CSDL cũ nếu tồn tại (`DROP DATABASE agu_postgrad_db`), khởi tạo 21 bảng quan hệ, ràng buộc RBAC, triggers, stored procedures và nạp dữ liệu mẫu (seed data) thực tế của Trường Đại học An Giang.
 - Khi cần nâng cấp CSDL đã có dữ liệu, chạy riêng migration [`migrations/add_admission_profile_major_id.sql`](./migrations/add_admission_profile_major_id.sql); không chạy lại script khởi tạo vì script đó xóa database.
+- Để lưu biên lai chuyển khoản học phí trên database hiện có, chạy migration [`migrations/add_tuition_payment_slip.sql`](./migrations/add_tuition_payment_slip.sql) một lần.
+- Ở phiên bản hiện tại, backend sẽ tự kiểm tra và bổ sung cột `major_id` / khóa ngoại `FK_profiles_majors` nếu database cũ chưa cập nhật, nên không cần chạy migration thủ công ở lần đầu dùng.
 - API đăng ký chỉ trả về đợt tuyển sinh có ngày hiện tại nằm trong `start_date`–`end_date`; dữ liệu seed hiện có là đợt năm 2024 đã đóng, nên hãy tạo/cập nhật đợt phù hợp trước khi thử nộp hồ sơ.
 
 ## 2. Các Stored Procedures quan trọng

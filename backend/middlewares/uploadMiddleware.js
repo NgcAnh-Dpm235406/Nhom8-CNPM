@@ -35,5 +35,25 @@ const upload = multer({
     fileFilter: fileFilter
 });
 
+const paymentSlipUpload = multer({
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const allowed = new Map([
+            ['.jpg', 'image/jpeg'],
+            ['.jpeg', 'image/jpeg'],
+            ['.png', 'image/png'],
+            ['.webp', 'image/webp']
+        ]);
+        if (allowed.get(ext) === file.mimetype) {
+            cb(null, true);
+        } else {
+            cb(new Error('Biên lai phải là ảnh JPG, PNG hoặc WEBP.'));
+        }
+    }
+});
+
 module.exports = upload;
+module.exports.paymentSlipUpload = paymentSlipUpload;
 
