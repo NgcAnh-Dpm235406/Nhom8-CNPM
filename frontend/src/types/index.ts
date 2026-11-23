@@ -1,4 +1,4 @@
-export type AdminSection = 'overview' | 'students' | 'admissions' | 'committees' | 'lecturers';
+export type AdminSection = 'overview' | 'students' | 'admissions' | 'committees' | 'lecturers' | 'academics' | 'tuition';
 export type TabType =
   | 'home'
   | 'register'
@@ -11,6 +11,8 @@ export type TabType =
   | 'admin-admissions'
   | 'admin-committees'
   | 'admin-lecturers'
+  | 'admin-academics'
+  | 'admin-tuition'
   | 'login';
 
 export type RoleCode = 'STUDENT' | 'LECTURER' | 'ADMIN';
@@ -296,6 +298,74 @@ export interface CourseClassRecord {
   credits: number;
   semester_name: string;
   registered_count: number;
+  semester_id?: number;
+  schedule_id?: number | null;
+  lecturer_id?: number | null;
+  room_name?: string | null;
+  day_of_week?: number | null;
+  start_shift?: number | null;
+  end_shift?: number | null;
+  lecturer_name?: string | null;
+}
+
+export interface CourseRecord {
+  course_id: number;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  prerequisite_course_id: number | null;
+  prerequisite_code: string | null;
+  prerequisite_name: string | null;
+}
+
+export interface LecturerClassRecord {
+  class_id: number;
+  class_name: string;
+  status: string;
+  max_students: number;
+  course_id: number;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  semester_id: number;
+  semester_name: string;
+  room_name: string | null;
+  day_of_week: number | null;
+  start_shift: number | null;
+  end_shift: number | null;
+  registered_count: number;
+}
+
+export interface LecturerClassStudent {
+  registration_id: number;
+  student_id: number;
+  student_code: string;
+  full_name: string;
+  email: string;
+  grade_id: number | null;
+  process_grade: number | null;
+  exam_grade: number | null;
+  final_grade: number | null;
+  is_locked: boolean;
+}
+
+export interface AdminTuitionRecord {
+  tuition_id: number;
+  student_id: number;
+  semester_id: number;
+  base_amount: number;
+  due_date: string;
+  paid_amount: number;
+  late_penalty_fee: number;
+  outstanding_balance: number;
+  status: string;
+  payment_slip_file: string | null;
+  payment_slip_status: 'Chờ xác nhận' | 'Đã xác nhận' | 'Từ chối' | null;
+  payment_slip_submitted_at: string | null;
+  payment_slip_note: string | null;
+  student_code: string;
+  student_name: string;
+  semester_name: string;
 }
 
 export interface StudentRegisteredCourse {

@@ -25,7 +25,9 @@ const adminSections: Partial<Record<TabType, AdminSection>> = {
   'admin-students': 'students',
   'admin-admissions': 'admissions',
   'admin-committees': 'committees',
-  'admin-lecturers': 'lecturers'
+  'admin-lecturers': 'lecturers',
+  'admin-academics': 'academics',
+  'admin-tuition': 'tuition'
 };
 
 const isAuthUser = (value: unknown): value is AuthUser =>
@@ -78,7 +80,7 @@ export default function App() {
       ? ['home', 'student', 'student-profile']
       : session.user.roleCode === 'LECTURER'
         ? ['home', 'faculty']
-        : ['home', 'admin-overview', 'admin-students', 'admin-admissions', 'admin-committees', 'admin-lecturers']
+        : ['home', 'admin-overview', 'admin-students', 'admin-admissions', 'admin-committees', 'admin-lecturers', 'admin-academics', 'admin-tuition']
     : ['home', 'register', 'lookup', 'login'];
 
   const handleNavigate = (tab: TabType, majorCode?: string) => {

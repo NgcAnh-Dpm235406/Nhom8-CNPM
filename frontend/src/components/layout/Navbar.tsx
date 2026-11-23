@@ -174,7 +174,9 @@ export const Navbar: FC<Props> = ({ activeTab, setActiveTab, user, onLogout }) =
               { tab: 'admin-students' as const, label: 'Quản lý học viên' },
               { tab: 'admin-admissions' as const, label: 'Quản lý tuyển sinh' },
               { tab: 'admin-committees' as const, label: 'Thành lập hội đồng' },
-              { tab: 'admin-lecturers' as const, label: 'Quản lý giảng viên' }
+              { tab: 'admin-lecturers' as const, label: 'Quản lý giảng viên' },
+              { tab: 'admin-academics' as const, label: 'Học phần & Lịch' },
+              { tab: 'admin-tuition' as const, label: 'Quản lý học phí' }
             ]
           : [])
       ]

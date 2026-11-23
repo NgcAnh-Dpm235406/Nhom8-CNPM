@@ -5,6 +5,7 @@ import { MucHocVien } from './MucHocVien';
 import { AdmissionsSection } from './MucTuyenSinh';
 import { CommitteesSection } from './MucHoiDong';
 import { LecturersSection } from './MucGiangVien';
+import { AcademicAndTuitionSection } from './MucHocPhanHocPhi';
 import { useAdminDashboard } from './useDuLieuQuanTri';
 import type { AdminSection, TabType } from '../../types';
 import { useBrowserAlert } from '../../hooks/useBrowserAlert';
@@ -32,7 +33,11 @@ export const AdminDashboard = ({ section, onNavigateTab }: AdminDashboardProps) 
           ? 'Quản lý tuyển sinh'
           : section === 'committees'
             ? 'Thành lập hội đồng'
-            : 'Quản lý giảng viên';
+            : section === 'lecturers'
+              ? 'Quản lý giảng viên'
+              : section === 'academics'
+                ? 'Quản lý học kỳ, học phần, lớp và lịch giảng dạy'
+                : 'Quản lý thu học phí và xác nhận biên lai';
 
   const sectionDescription =
     section === 'overview'
@@ -43,7 +48,11 @@ export const AdminDashboard = ({ section, onNavigateTab }: AdminDashboardProps) 
           ? 'Xem, xét duyệt hồ sơ dự tuyển và công nhận trúng tuyển.'
           : section === 'committees'
             ? 'Thành lập hội đồng bảo vệ luận văn với 5 giảng viên.'
-            : 'Xem thông tin, thêm mới, cập nhật và xóa tài khoản giảng viên.';
+            : section === 'lecturers'
+              ? 'Xem thông tin, thêm mới, cập nhật và xóa tài khoản giảng viên.'
+              : section === 'academics'
+                ? 'Tạo học kỳ, học phần, mở lớp, phân công giảng viên và xếp lịch.'
+                : 'Tạo khoản học phí, theo dõi công nợ và duyệt biên lai thanh toán.';
 
   const copyCredentials = async () => {
     if (!issuedAccount) return;
@@ -160,8 +169,14 @@ export const AdminDashboard = ({ section, onNavigateTab }: AdminDashboardProps) 
         <AdmissionsSection dashboard={dashboard} />
       ) : section === 'committees' ? (
         <CommitteesSection dashboard={dashboard} />
-      ) : (
+      ) : section === 'lecturers' ? (
         <LecturersSection dashboard={dashboard} />
+      ) : (
+        <AcademicAndTuitionSection
+          mode={section === 'academics' ? 'academics' : 'tuition'}
+          students={dashboard.students}
+          lecturers={dashboard.lecturers}
+        />
       )}
     </section>
   );

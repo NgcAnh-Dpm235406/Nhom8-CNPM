@@ -9,6 +9,14 @@ async function resolveStudentId(pool, user) {
     return res.recordset.length > 0 ? res.recordset[0].student_id : null;
 }
 
+async function resolveLecturerId(pool, user) {
+    if (user.lecturer_id) return user.lecturer_id;
+    const res = await pool.request()
+        .input('userId', sql.BigInt, user.user_id)
+        .query(`SELECT lecturer_id FROM lecturers WHERE user_id=@userId`);
+    return res.recordset.length > 0 ? res.recordset[0].lecturer_id : null;
+}
+
 // 1. Lấy thông tin cá nhân học viên cao học (GET /api/students/me)
 exports.getMyInfo = async (req, res) => {
     try {
@@ -354,6 +362,70 @@ exports.registerCourse = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Thiếu thông tin lớp học phần!' });
         }
 
+        const classAndPrerequisite = await pool.request()
+            .input('classId', sql.Int, classId)
+            .query(`
+                SELECT cc.course_id, cc.semester_id, c.prerequisite_course_id,
+                       prereq.course_code AS prerequisite_code, prereq.course_name AS prerequisite_name,
+                       sch.day_of_week, sch.start_shift, sch.end_shift
+                FROM course_classes cc
+                JOIN courses c ON c.course_id = cc.course_id
+                LEFT JOIN courses prereq ON prereq.course_id = c.prerequisite_course_id
+                LEFT JOIN schedules sch ON sch.class_id = cc.class_id
+                WHERE cc.class_id=@classId
+            `);
+        if (classAndPrerequisite.recordset.length === 0) {
+            return res.status(404).json({ success: false, message: 'Lớp học phần không tồn tại!' });
+        }
+        const academicClass = classAndPrerequisite.recordset[0];
+        if (academicClass.prerequisite_course_id) {
+            const prerequisiteCheck = await pool.request()
+                .input('studentId', sql.BigInt, studentId)
+                .input('prerequisiteCourseId', sql.Int, academicClass.prerequisite_course_id)
+                .query(`
+                    SELECT TOP 1 sg.final_grade
+                    FROM course_registrations cr
+                    JOIN course_classes cc ON cc.class_id=cr.class_id
+                    JOIN student_grades sg ON sg.registration_id=cr.registration_id
+                    WHERE cr.student_id=@studentId
+                      AND cc.course_id=@prerequisiteCourseId
+                      AND sg.final_grade >= 5
+                      AND sg.is_locked=1
+                    ORDER BY sg.final_grade DESC
+                `);
+            if (prerequisiteCheck.recordset.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Chưa đạt học phần tiên quyết: ${academicClass.prerequisite_code} - ${academicClass.prerequisite_name}.`
+                });
+            }
+        }
+        if (academicClass.day_of_week) {
+            const conflictCheck = await pool.request()
+                .input('studentId', sql.BigInt, studentId)
+                .input('dayOfWeek', sql.Int, academicClass.day_of_week)
+                .input('startShift', sql.Int, academicClass.start_shift)
+                .input('endShift', sql.Int, academicClass.end_shift)
+                .query(`
+                    SELECT TOP 1 c.course_code, c.course_name, cc.class_name
+                    FROM course_registrations cr
+                    JOIN course_classes cc ON cc.class_id=cr.class_id
+                    JOIN courses c ON c.course_id=cc.course_id
+                    JOIN schedules sch ON sch.class_id=cc.class_id
+                    WHERE cr.student_id=@studentId
+                      AND sch.day_of_week=@dayOfWeek
+                      AND sch.start_shift <= @endShift
+                      AND sch.end_shift >= @startShift
+                `);
+            if (conflictCheck.recordset.length > 0) {
+                const conflict = conflictCheck.recordset[0];
+                return res.status(409).json({
+                    success: false,
+                    message: `Trùng lịch với ${conflict.course_code} - ${conflict.course_name} (${conflict.class_name}).`
+                });
+            }
+        }
+
         // Kiểm tra lớp có mở không và sĩ số
         const classCheck = await pool.request()
             .input('classId', sql.Int, classId)
@@ -524,7 +596,69 @@ exports.getMyGrades = async (req, res) => {
     }
 };
 
-// 7. Nhập điểm học phần - Giảng viên / Admin (PUT /api/students/enter-grades)
+// 7. Giảng viên xem các lớp được phân công
+exports.getLecturerClasses = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const lecturerId = req.user.role_code === 'ADMIN' && req.query.lecturerId
+            ? Number(req.query.lecturerId)
+            : await resolveLecturerId(pool, req.user);
+        if (!lecturerId) return res.status(400).json({ success: false, message: 'Thiếu mã giảng viên.' });
+
+        const result = await pool.request()
+            .input('lecturerId', sql.Int, lecturerId)
+            .query(`
+                SELECT cc.class_id, cc.class_name, cc.status, cc.max_students,
+                       c.course_id, c.course_code, c.course_name, c.credits,
+                       sem.semester_id, sem.semester_name,
+                       sch.room_name, sch.day_of_week, sch.start_shift, sch.end_shift,
+                       (SELECT COUNT(*) FROM course_registrations cr WHERE cr.class_id=cc.class_id) AS registered_count
+                FROM schedules sch
+                JOIN course_classes cc ON cc.class_id=sch.class_id
+                JOIN courses c ON c.course_id=cc.course_id
+                JOIN semesters sem ON sem.semester_id=cc.semester_id
+                WHERE sch.lecturer_id=@lecturerId
+                ORDER BY sem.semester_id DESC, c.course_code
+            `);
+        return res.json({ success: true, classes: result.recordset });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+exports.getLecturerClassStudents = async (req, res) => {
+    const classId = Number(req.params.classId);
+    if (!Number.isSafeInteger(classId) || classId <= 0) {
+        return res.status(400).json({ success: false, message: 'Mã lớp không hợp lệ.' });
+    }
+    try {
+        const pool = await poolPromise;
+        const lecturerId = req.user.role_code === 'ADMIN' ? null : await resolveLecturerId(pool, req.user);
+        if (req.user.role_code !== 'ADMIN' && !lecturerId) {
+            return res.status(400).json({ success: false, message: 'Thiếu mã giảng viên.' });
+        }
+        const request = pool.request()
+            .input('classId', sql.Int, classId);
+        if (lecturerId) request.input('lecturerId', sql.Int, lecturerId);
+        const result = await request.query(`
+            SELECT cr.registration_id, s.student_id, s.student_code, p.full_name, p.email,
+                   sg.grade_id, sg.process_grade, sg.exam_grade, sg.final_grade, sg.is_locked
+            FROM course_registrations cr
+            JOIN students s ON s.student_id=cr.student_id
+            JOIN admission_profiles p ON p.profile_id=s.profile_id
+            LEFT JOIN student_grades sg ON sg.registration_id=cr.registration_id
+            JOIN course_classes cc ON cc.class_id=cr.class_id
+            WHERE cr.class_id=@classId
+              ${lecturerId ? 'AND EXISTS (SELECT 1 FROM schedules sch WHERE sch.class_id=@classId AND sch.lecturer_id=@lecturerId)' : ''}
+            ORDER BY p.full_name
+        `);
+        return res.json({ success: true, students: result.recordset });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// 8. Nhập điểm học phần - Giảng viên / Admin (PUT /api/students/enter-grades)
 exports.enterGrades = async (req, res) => {
     try {
         const { gradeId, processGrade, examGrade } = req.body;
@@ -544,9 +678,29 @@ exports.enterGrades = async (req, res) => {
         if (gradeCheck.recordset[0].is_locked) {
             return res.status(400).json({ success: false, message: 'Điểm của học phần này đã bị khóa, không thể chỉnh sửa!' });
         }
+        if (req.user.role_code === 'LECTURER') {
+            const lecturerId = await resolveLecturerId(pool, req.user);
+            const assignmentCheck = await pool.request()
+                .input('gradeId', sql.BigInt, gradeId)
+                .input('lecturerId', sql.Int, lecturerId)
+                .query(`
+                    SELECT 1
+                    FROM student_grades sg
+                    JOIN course_registrations cr ON cr.registration_id=sg.registration_id
+                    JOIN schedules sch ON sch.class_id=cr.class_id
+                    WHERE sg.grade_id=@gradeId AND sch.lecturer_id=@lecturerId
+                `);
+            if (assignmentCheck.recordset.length === 0) {
+                return res.status(403).json({ success: false, message: 'Bạn không phụ trách lớp học phần này.' });
+            }
+        }
 
         const pGrade = processGrade !== undefined ? parseFloat(processGrade) : null;
         const eGrade = examGrade !== undefined ? parseFloat(examGrade) : null;
+        if ((pGrade !== null && (!Number.isFinite(pGrade) || pGrade < 0 || pGrade > 10)) ||
+            (eGrade !== null && (!Number.isFinite(eGrade) || eGrade < 0 || eGrade > 10))) {
+            return res.status(400).json({ success: false, message: 'Điểm phải nằm trong khoảng từ 0 đến 10.' });
+        }
         let finalGrade = null;
         if (pGrade !== null && eGrade !== null) {
             finalGrade = Math.round((pGrade * 0.4 + eGrade * 0.6) * 100) / 100;

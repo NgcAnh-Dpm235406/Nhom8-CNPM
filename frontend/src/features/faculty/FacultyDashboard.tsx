@@ -17,16 +17,22 @@ import { useBrowserAlert } from '../../hooks/useBrowserAlert';
 import type {
   FacultyAdvisorDashboard,
   FacultySubmissionRecord,
-  LecturerCommitteeRecord
+  LecturerCommitteeRecord,
+  LecturerClassRecord,
+  LecturerClassStudent
 } from '../../types';
 
-type FacultyTab = 'advising' | 'submissions' | 'committees';
+type FacultyTab = 'advising' | 'submissions' | 'committees' | 'classes';
 
 export const FacultyDashboard = () => {
   const [activeTab, setActiveTab] = useState<FacultyTab>('advising');
   const [dashboard, setDashboard] = useState<FacultyAdvisorDashboard | null>(null);
   const [submissions, setSubmissions] = useState<FacultySubmissionRecord[]>([]);
   const [committees, setCommittees] = useState<LecturerCommitteeRecord[]>([]);
+  const [classes, setClasses] = useState<LecturerClassRecord[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [classStudents, setClassStudents] = useState<LecturerClassStudent[]>([]);
+  const [gradeDrafts, setGradeDrafts] = useState<Record<number, { processGrade: string; examGrade: string }>>({});
 
   const [isLoading, setIsLoading] = useState(true);
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
@@ -109,6 +115,33 @@ export const FacultyDashboard = () => {
     }
   }, []);
 
+  const loadClasses = useCallback(async () => {
+    try {
+      const result = await api.student.getLecturerClasses();
+      if (result.success) setClasses(result.classes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể tải danh sách lớp giảng dạy.');
+    }
+  }, []);
+
+  const loadClassStudents = useCallback(async (classId: number) => {
+    try {
+      const result = await api.student.getLecturerClassStudents(classId);
+      if (!result.success) throw new Error('Không thể tải danh sách học viên.');
+      setClassStudents(result.students);
+      const drafts: Record<number, { processGrade: string; examGrade: string }> = {};
+      result.students.forEach(student => {
+        drafts[student.grade_id || student.registration_id] = {
+          processGrade: student.process_grade === null ? '' : String(student.process_grade),
+          examGrade: student.exam_grade === null ? '' : String(student.exam_grade)
+        };
+      });
+      setGradeDrafts(drafts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể tải học viên của lớp.');
+    }
+  }, []);
+
   useEffect(() => {
     let isCurrent = true;
     void Promise.resolve().then(() => {
@@ -116,13 +149,14 @@ export const FacultyDashboard = () => {
         void loadRequests();
         void loadSubmissions();
         void loadCommittees();
+        void loadClasses();
       }
       return undefined;
     });
     return () => {
       isCurrent = false;
     };
-  }, [loadRequests, loadSubmissions, loadCommittees]);
+  }, [loadRequests, loadSubmissions, loadCommittees, loadClasses]);
 
   // Phê duyệt / Từ chối yêu cầu hướng dẫn
   const handleRespond = async (requestId: number, action: 'accept' | 'reject') => {
@@ -198,6 +232,29 @@ export const FacultyDashboard = () => {
     }
   };
 
+  const handleSaveGrade = async (student: LecturerClassStudent) => {
+    if (!student.grade_id) return;
+    const key = student.grade_id;
+    const draft = gradeDrafts[key];
+    if (!draft) return;
+    setError('');
+    setNotice('');
+    try {
+      const processGrade = draft.processGrade === '' ? undefined : Number(draft.processGrade);
+      const examGrade = draft.examGrade === '' ? undefined : Number(draft.examGrade);
+      const result = await api.student.enterGrades({
+        gradeId: student.grade_id,
+        processGrade,
+        examGrade
+      });
+      if (!result.success) throw new Error(result.message);
+      setNotice(result.message);
+      if (selectedClassId) await loadClassStudents(selectedClassId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể lưu điểm.');
+    }
+  };
+
   if (isLoading && !dashboard) {
     return <p className="mx-auto my-12 max-w-5xl px-4 text-center text-slate-500">Đang tải dữ liệu giảng viên...</p>;
   }
@@ -228,6 +285,16 @@ export const FacultyDashboard = () => {
 
       {/* Điều hướng 3 Tab chức năng của Giảng viên */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('classes')}
+          className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition ${
+            activeTab === 'classes' ? 'bg-sky-600 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <BookOpen className="h-4 w-4" />
+          <span>Lớp giảng dạy & Điểm</span>
+        </button>
         <button
           type="button"
           onClick={() => setActiveTab('advising')}
@@ -265,6 +332,66 @@ export const FacultyDashboard = () => {
           <span>3. Hội đồng của tôi ({committees.length})</span>
         </button>
       </div>
+
+      {activeTab === 'classes' && (
+        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-bold text-slate-900">Lớp đang giảng dạy</h3>
+            <div className="space-y-2">
+              {classes.map(item => (
+                <button
+                  key={item.class_id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedClassId(item.class_id);
+                    void loadClassStudents(item.class_id);
+                  }}
+                  className={`w-full rounded-2xl border p-3 text-left ${
+                    selectedClassId === item.class_id ? 'border-sky-500 bg-sky-50' : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <p className="font-bold text-slate-900">{item.course_code} - {item.class_name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.semester_name} · {item.registered_count}/{item.max_students} học viên</p>
+                  <p className="mt-1 text-xs text-sky-700">{item.room_name ? `${item.room_name} · Thứ ${item.day_of_week} · Tiết ${item.start_shift}-${item.end_shift}` : 'Chưa xếp lịch'}</p>
+                </button>
+              ))}
+              {classes.length === 0 && <p className="text-sm text-slate-400">Chưa được phân công lớp học phần.</p>}
+            </div>
+          </section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-bold text-slate-900">Danh sách học viên & nhập điểm</h3>
+            {!selectedClassId ? (
+              <p className="text-sm text-slate-400">Chọn một lớp để xem danh sách.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="p-3">Mã HV</th><th className="p-3">Họ tên</th><th className="p-3">Điểm QT</th><th className="p-3">Điểm thi</th><th className="p-3">Tổng kết</th><th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {classStudents.map(student => {
+                      const key = student.grade_id || student.registration_id;
+                      const draft = gradeDrafts[key] || { processGrade: '', examGrade: '' };
+                      return (
+                        <tr key={student.registration_id}>
+                          <td className="p-3 font-mono font-bold">{student.student_code}</td>
+                          <td className="p-3 font-semibold">{student.full_name}</td>
+                          <td className="p-3"><input type="number" min="0" max="10" step="0.01" disabled={student.is_locked} value={draft.processGrade} onChange={e => setGradeDrafts(prev => ({ ...prev, [key]: { ...draft, processGrade: e.target.value } }))} className="w-20 rounded border p-2" /></td>
+                          <td className="p-3"><input type="number" min="0" max="10" step="0.01" disabled={student.is_locked} value={draft.examGrade} onChange={e => setGradeDrafts(prev => ({ ...prev, [key]: { ...draft, examGrade: e.target.value } }))} className="w-20 rounded border p-2" /></td>
+                          <td className="p-3 font-bold text-sky-700">{student.final_grade ?? '--'}</td>
+                          <td className="p-3 text-right"><button type="button" disabled={student.is_locked} onClick={() => void handleSaveGrade(student)} className="rounded-lg bg-sky-600 px-3 py-2 font-bold text-white disabled:opacity-50">{student.is_locked ? 'Đã khóa' : 'Lưu điểm'}</button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* TAB 1: YÊU CẦU & DANH SÁCH HỌC VIÊN HƯỚNG DẪN                  */}

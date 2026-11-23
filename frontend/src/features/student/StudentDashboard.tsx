@@ -436,6 +436,23 @@ export const StudentDashboard = () => {
     }
   };
 
+  const handleCancelCourse = async (registrationId: number) => {
+    if (!window.confirm('Bạn có chắc muốn hủy đăng ký học phần này?')) return;
+    setIsSubmitting(true);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.student.cancelCourse(registrationId);
+      if (!res.success) throw new Error(res.message);
+      setNotice(res.message);
+      await loadDashboard();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể hủy đăng ký học phần.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmitPaymentSlip = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedTuition || !paymentSlipFile) {
@@ -1099,6 +1116,7 @@ export const StudentDashboard = () => {
                       <th className="p-3">Phòng học</th>
                       <th className="p-3">Lịch học</th>
                       <th className="p-3">Giảng viên</th>
+                      <th className="p-3 text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1113,6 +1131,16 @@ export const StudentDashboard = () => {
                           {rc.day_of_week ? `Thứ ${rc.day_of_week} (Tiết ${rc.start_shift}-${rc.end_shift})` : 'Chưa xếp'}
                         </td>
                         <td className="p-3 text-slate-800 font-medium">{rc.lecturer_name || 'Chưa phân công'}</td>
+                        <td className="p-3 text-right">
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => void handleCancelCourse(rc.registration_id)}
+                            className="rounded-lg border border-rose-200 px-3 py-1.5 font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            Hủy đăng ký
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

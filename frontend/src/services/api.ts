@@ -1,4 +1,5 @@
 import type {
+  AdminTuitionRecord,
   AdminCommitteeRecord,
   AdminOverviewData,
   AdminStudent,
@@ -7,6 +8,7 @@ import type {
   AdmissionProfile,
   AuthUser,
   CourseClassRecord,
+  CourseRecord,
   CurriculumCourseItem,
   DefenseCandidate,
   DefenseEvaluationInput,
@@ -16,6 +18,8 @@ import type {
   GatekeeperCheckResult,
   LanguageCertRecord,
   Lecturer,
+  LecturerClassRecord,
+  LecturerClassStudent,
   LecturerCommitteeRecord,
   LecturerInput,
   LecturerStudent,
@@ -144,11 +148,37 @@ export const api = {
       request<{ success: boolean; courses: CurriculumCourseItem[] }>(`/academic/curriculums/${curriculumId}/courses`),
     getLecturers: () => request<{ success: boolean; lecturers: Lecturer[] }>('/academic/lecturers'),
     getSemesters: () => request<{ success: boolean; semesters: { semester_id: number; semester_name: string; start_date: string; end_date: string; is_grade_locked: boolean }[] }>('/academic/semesters'),
+    createSemester: (body: { semesterName: string; startDate: string; endDate: string }) =>
+      request<{ success: boolean; message: string }>('/academic/semesters', { method: 'POST', body: JSON.stringify(body) }),
     getClasses: (semesterId?: number) =>
-      request<{ success: boolean; classes: CourseClassRecord[] }>(`/academic/classes${semesterId ? `?semesterId=${semesterId}` : ''}`)
+      request<{ success: boolean; classes: CourseClassRecord[] }>(`/academic/classes${semesterId ? `?semesterId=${semesterId}` : ''}`),
+    getCourses: () =>
+      request<{ success: boolean; courses: CourseRecord[] }>('/academic/courses'),
+    createCourse: (body: { courseCode: string; courseName: string; credits: number; prerequisiteCourseId?: number | null }) =>
+      request<{ success: boolean; message: string }>('/academic/courses', { method: 'POST', body: JSON.stringify(body) }),
+    updateCourse: (id: number, body: { courseCode: string; courseName: string; credits: number; prerequisiteCourseId?: number | null }) =>
+      request<{ success: boolean; message: string }>(`/academic/courses/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    deleteCourse: (id: number) =>
+      request<{ success: boolean; message: string }>(`/academic/courses/${id}`, { method: 'DELETE' }),
+    createClass: (body: { courseId: number; semesterId: number; className: string; maxStudents: number; status: string }) =>
+      request<{ success: boolean; message: string }>('/academic/classes', { method: 'POST', body: JSON.stringify(body) }),
+    updateClass: (id: number, body: { courseId: number; semesterId: number; className: string; maxStudents: number; status: string }) =>
+      request<{ success: boolean; message: string }>(`/academic/classes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    deleteClass: (id: number) =>
+      request<{ success: boolean; message: string }>(`/academic/classes/${id}`, { method: 'DELETE' }),
+    saveClassSchedule: (id: number, body: { lecturerId: number; roomName: string; dayOfWeek: number; startShift: number; endShift: number }) =>
+      request<{ success: boolean; message: string }>(`/academic/classes/${id}/schedule`, { method: 'PUT', body: JSON.stringify(body) })
   },
 
   admin: {
+    getTuition: () =>
+      request<{ success: boolean; tuitionList: AdminTuitionRecord[] }>('/admin/tuition'),
+    createTuition: (body: { studentId: number; semesterId: number; baseAmount: number; dueDate: string; paidAmount?: number; latePenaltyFee?: number }) =>
+      request<{ success: boolean; message: string }>('/admin/tuition', { method: 'POST', body: JSON.stringify(body) }),
+    updateTuition: (id: number, body: { baseAmount: number; dueDate: string; paidAmount: number; latePenaltyFee: number }) =>
+      request<{ success: boolean; message: string }>(`/admin/tuition/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    reviewTuitionPaymentSlip: (id: number, body: { decision: 'Đã xác nhận' | 'Từ chối'; note?: string; paidAmount?: number }) =>
+      request<{ success: boolean; message: string }>(`/admin/tuition/${id}/payment-slip/review`, { method: 'PUT', body: JSON.stringify(body) }),
     getOverviewStats: () => request<{ success: boolean; data: AdminOverviewData }>('/admin/overview-stats'),
     getStudents: () => request<{ success: boolean; message?: string; students: AdminStudent[] }>('/admin/students'),
     updateStudentAcademicStatus: (studentId: number | string, academicStatus: string) =>
@@ -222,11 +252,17 @@ export const api = {
     getDefenseResult: () => request<{ success: boolean; defense: StudentDefenseResult | null }>('/students/defense-result'),
     registerCourse: (classId: number) =>
       request<{ success: boolean; message: string }>('/students/register-course', { method: 'POST', body: JSON.stringify({ classId }) }),
+    cancelCourse: (registrationId: number) =>
+      request<{ success: boolean; message: string }>(`/students/cancel-course/${registrationId}`, { method: 'DELETE' }),
+    getLecturerClasses: () =>
+      request<{ success: boolean; classes: LecturerClassRecord[] }>('/students/lecturer/classes'),
+    getLecturerClassStudents: (classId: number) =>
+      request<{ success: boolean; students: LecturerClassStudent[] }>(`/students/lecturer/classes/${classId}/students`),
     getSchedule: () => request<{ success: boolean; courses: StudentRegisteredCourse[] }>('/students/schedule'),
     getGrades: (studentId?: number | string) =>
       request<{ success: boolean; grades: StudentGradeRecord[] }>(`/students/grades${studentId ? `?studentId=${studentId}` : ''}`),
     enterGrades: (body: { gradeId: number | string; processGrade?: number; examGrade?: number }) =>
-      request('/students/enter-grades', { method: 'PUT', body: JSON.stringify(body) })
+      request<{ success: boolean; message: string }>('/students/enter-grades', { method: 'PUT', body: JSON.stringify(body) })
   },
 
   // 5. Phân hệ Luận văn, GVHD & Tiến độ 5 mốc

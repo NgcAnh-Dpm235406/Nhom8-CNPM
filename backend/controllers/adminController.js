@@ -536,6 +536,149 @@ exports.deleteLecturer = async (req, res) => {
     }
 };
 
+exports.getTuitionList = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request().query(`
+            SELECT t.tuition_id, t.student_id, t.semester_id, t.base_amount, t.due_date,
+                   t.paid_amount, t.late_penalty_fee, t.outstanding_balance, t.status,
+                   t.payment_slip_file, t.payment_slip_status, t.payment_slip_submitted_at, t.payment_slip_note,
+                   s.student_code, p.full_name AS student_name, sem.semester_name
+            FROM tuition_fees t
+            JOIN students s ON s.student_id=t.student_id
+            JOIN admission_profiles p ON p.profile_id=s.profile_id
+            JOIN semesters sem ON sem.semester_id=t.semester_id
+            ORDER BY sem.semester_id DESC, s.student_code
+        `);
+        return res.json({ success: true, tuitionList: result.recordset });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+exports.createTuition = async (req, res) => {
+    const { studentId, semesterId, baseAmount, dueDate, paidAmount = 0, latePenaltyFee = 0 } = req.body || {};
+    const base = Number(baseAmount);
+    const paid = Number(paidAmount);
+    const penalty = Number(latePenaltyFee);
+    if (!Number.isSafeInteger(Number(studentId)) || !Number.isSafeInteger(Number(semesterId)) ||
+        !Number.isFinite(base) || base < 0 || !Number.isFinite(paid) || paid < 0 ||
+        !Number.isFinite(penalty) || penalty < 0 || !dueDate) {
+        return res.status(400).json({ success: false, message: 'Dữ liệu học phí không hợp lệ.' });
+    }
+    try {
+        const pool = await poolPromise;
+        const status = paid >= base + penalty ? 'Hoàn thành' : paid > 0 ? 'Đã thanh toán một phần' : 'Chưa thanh toán';
+        await pool.request()
+            .input('studentId', sql.BigInt, Number(studentId))
+            .input('semesterId', sql.Int, Number(semesterId))
+            .input('baseAmount', sql.Decimal(12, 2), base)
+            .input('dueDate', sql.Date, dueDate)
+            .input('paidAmount', sql.Decimal(12, 2), paid)
+            .input('latePenaltyFee', sql.Decimal(12, 2), penalty)
+            .input('status', sql.NVarChar(30), status)
+            .query(`
+                INSERT INTO tuition_fees
+                    (student_id, semester_id, base_amount, due_date, paid_amount, late_penalty_fee, status)
+                VALUES (@studentId, @semesterId, @baseAmount, @dueDate, @paidAmount, @latePenaltyFee, @status)
+            `);
+        return res.status(201).json({ success: true, message: 'Tạo khoản học phí thành công.' });
+    } catch (err) {
+        if (err.number === 2627 || err.number === 2601) {
+            return res.status(409).json({ success: false, message: 'Học viên đã có khoản học phí ở học kỳ này.' });
+        }
+        return sendDatabaseError(res, err);
+    }
+};
+
+exports.updateTuition = async (req, res) => {
+    const tuitionId = Number(req.params.id);
+    const { baseAmount, dueDate, paidAmount, latePenaltyFee, status } = req.body || {};
+    if (!Number.isSafeInteger(tuitionId) || tuitionId <= 0) {
+        return res.status(400).json({ success: false, message: 'Mã học phí không hợp lệ.' });
+    }
+    const base = Number(baseAmount);
+    const paid = Number(paidAmount);
+    const penalty = Number(latePenaltyFee);
+    if (!Number.isFinite(base) || base < 0 || !Number.isFinite(paid) || paid < 0 ||
+        !Number.isFinite(penalty) || penalty < 0 || !dueDate) {
+        return res.status(400).json({ success: false, message: 'Dữ liệu học phí không hợp lệ.' });
+    }
+    try {
+        const pool = await poolPromise;
+        const finalStatus = paid >= base + penalty ? 'Hoàn thành' : paid > 0 ? 'Đã thanh toán một phần' : 'Chưa thanh toán';
+        await pool.request()
+            .input('tuitionId', sql.BigInt, tuitionId)
+            .input('baseAmount', sql.Decimal(12, 2), base)
+            .input('dueDate', sql.Date, dueDate)
+            .input('paidAmount', sql.Decimal(12, 2), paid)
+            .input('latePenaltyFee', sql.Decimal(12, 2), penalty)
+            .input('status', sql.NVarChar(30), finalStatus)
+            .query(`
+                UPDATE tuition_fees
+                SET base_amount=@baseAmount, due_date=@dueDate, paid_amount=@paidAmount,
+                    late_penalty_fee=@latePenaltyFee, status=@status
+                WHERE tuition_id=@tuitionId
+            `);
+        await writeAuditLog(req.user?.user_id, 'UPDATE_TUITION', 'tuition_fees', tuitionId, null,
+            { baseAmount: base, paidAmount: paid, latePenaltyFee: penalty, status: finalStatus }, req.ip);
+        return res.json({ success: true, message: 'Cập nhật học phí thành công.' });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+exports.reviewTuitionPaymentSlip = async (req, res) => {
+    const tuitionId = Number(req.params.id);
+    const { decision, note = '', paidAmount } = req.body || {};
+    if (!Number.isSafeInteger(tuitionId) || tuitionId <= 0 ||
+        !['Đã xác nhận', 'Từ chối'].includes(decision)) {
+        return res.status(400).json({ success: false, message: 'Yêu cầu xác nhận biên lai không hợp lệ.' });
+    }
+    try {
+        const pool = await poolPromise;
+        const invoiceResult = await pool.request()
+            .input('tuitionId', sql.BigInt, tuitionId)
+            .query(`
+                SELECT tuition_id, base_amount, paid_amount, late_penalty_fee, outstanding_balance
+                FROM tuition_fees WHERE tuition_id=@tuitionId
+            `);
+        if (invoiceResult.recordset.length === 0) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy khoản học phí.' });
+        }
+        const invoice = invoiceResult.recordset[0];
+        let newPaidAmount = Number(invoice.paid_amount || 0);
+        if (decision === 'Đã xác nhận') {
+            const requestedPaid = paidAmount === undefined ? Number(invoice.outstanding_balance) : Number(paidAmount);
+            if (!Number.isFinite(requestedPaid) || requestedPaid <= 0) {
+                return res.status(400).json({ success: false, message: 'Số tiền thanh toán không hợp lệ.' });
+            }
+            newPaidAmount = Number(invoice.paid_amount || 0) + requestedPaid;
+        }
+        const total = Number(invoice.base_amount) + Number(invoice.late_penalty_fee || 0);
+        const finalStatus = newPaidAmount >= total ? 'Hoàn thành' : newPaidAmount > 0 ? 'Đã thanh toán một phần' : 'Chưa thanh toán';
+        await pool.request()
+            .input('tuitionId', sql.BigInt, tuitionId)
+            .input('decision', sql.NVarChar(30), decision)
+            .input('note', sql.NVarChar(500), note.trim() || null)
+            .input('paidAmount', sql.Decimal(12, 2), newPaidAmount)
+            .input('status', sql.NVarChar(30), finalStatus)
+            .query(`
+                UPDATE tuition_fees
+                SET payment_slip_status=@decision, payment_slip_note=@note,
+                    paid_amount=@paidAmount, status=@status
+                WHERE tuition_id=@tuitionId
+            `);
+        await writeAuditLog(req.user?.user_id, 'REVIEW_TUITION_PAYMENT_SLIP', 'tuition_fees', tuitionId,
+            null, { decision, note, paidAmount: newPaidAmount, status: finalStatus }, req.ip);
+        return res.json({ success: true, message: decision === 'Đã xác nhận'
+            ? 'Đã xác nhận biên lai và cập nhật thanh toán.'
+            : 'Đã từ chối biên lai và lưu lý do.' });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
 exports.getOverviewStats = async (req, res) => {
     try {
         const pool = await poolPromise;
