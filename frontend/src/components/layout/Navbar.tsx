@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { FC, FormEvent } from 'react';
-import { GraduationCap, LogOut, Bell, KeyRound, X, CheckCheck } from 'lucide-react';
+import { LogOut, Bell, KeyRound, X, CheckCheck } from 'lucide-react';
 import { api } from '../../services/api';
 import type { AuthUser, TabType } from '../../types';
 
@@ -194,12 +194,14 @@ export const Navbar: FC<Props> = ({ activeTab, setActiveTab, user, onLogout }) =
       <header className="bg-white/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto min-h-16 px-4 py-2 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('home')}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
-              <GraduationCap className="w-6 h-6" />
-            </div>
+            <img
+              src="/agu_logo.png"
+              alt="Logo Trường Đại học An Giang"
+              className="w-10 h-10 object-contain drop-shadow-sm hover:scale-105 transition-transform"
+            />
             <div>
               <span className="font-bold text-slate-900 tracking-tight text-base block leading-tight">AGU PostGrad</span>
-              <span className="text-[11px] text-slate-400 font-medium">Hệ Thống Quản Lý Đào Tạo Thạc Sĩ</span>
+              <span className="text-[11px] text-slate-500 font-medium">Trường Đại học An Giang &bull; ĐHQG-HCM</span>
             </div>
           </div>
 
