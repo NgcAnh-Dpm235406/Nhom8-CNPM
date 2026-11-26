@@ -1,8 +1,149 @@
 require('dotenv').config();
-const sql = require('mssql/msnodesqlv8');
 
-const primaryConnectionString = `Driver={${process.env.DB_DRIVER || 'ODBC Driver 18 for SQL Server'}};Server=${process.env.DB_SERVER || 'localhost'};Database=${process.env.DB_NAME || 'agu_postgrad_db'};Trusted_Connection=yes;TrustServerCertificate=yes;`;
-const fallbackConnectionString = `Driver={${process.env.FALLBACK_DRIVER || 'SQL Server'}};Server=${process.env.DB_SERVER || 'localhost'};Database=${process.env.DB_NAME || 'agu_postgrad_db'};Trusted_Connection=yes;`;
+// Kiểm tra xem có cấu hình PostgreSQL / Supabase hay không (Codespaces hoặc Production)
+const isPostgres = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
+
+let sql;
+let poolPromise;
+
+if (isPostgres) {
+    const { Pool } = require('pg');
+    const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+    console.log('🌐 [Database] Phát hiện cấu hình PostgreSQL / Supabase, đang kết nối...');
+
+    const pgPool = new Pool({
+        connectionString,
+        ssl: { rejectUnauthorized: false }
+    });
+
+    const fakeSql = {
+        Int: 'int',
+        BigInt: 'bigint',
+        VarChar: () => 'varchar',
+        NVarChar: () => 'nvarchar',
+        Bit: 'bit',
+        Decimal: () => 'decimal',
+        Date: 'date',
+        DateTime: 'timestamp',
+        Transaction: class PgTransaction {
+            constructor() {
+                this.client = null;
+            }
+            async begin() {
+                this.client = await pgPool.connect();
+                await this.client.query('BEGIN');
+            }
+            async commit() {
+                if (this.client) {
+                    await this.client.query('COMMIT');
+                    this.client.release();
+                    this.client = null;
+                }
+            }
+            async rollback() {
+                if (this.client) {
+                    await this.client.query('ROLLBACK');
+                    this.client.release();
+                    this.client = null;
+                }
+            }
+            request() {
+                return new PgRequest(this.client || pgPool);
+            }
+        }
+    };
+    fakeSql.VarChar.MAX = 'max';
+    fakeSql.NVarChar.MAX = 'max';
+
+    class PgRequest {
+        constructor(executor) {
+            this.executor = executor;
+            this.inputs = new Map();
+        }
+
+        input(name, type, value) {
+            this.inputs.set(name, value);
+            return this;
+        }
+
+        output() {
+            return this;
+        }
+
+        async query(sqlString) {
+            let transformed = sqlString;
+            transformed = transformed.replace(/N'([^']*)'/g, "'$1'");
+
+            let topLimit = null;
+            transformed = transformed.replace(/SELECT\s+TOP\s*\(?(\d+)\)?/i, (match, n) => {
+                topLimit = n;
+                return 'SELECT';
+            });
+
+            transformed = transformed.replace(/\bISNULL\s*\(/gi, 'COALESCE(');
+            transformed = transformed.replace(/\bGETDATE\s*\(\s*\)/gi, 'CURRENT_TIMESTAMP');
+            transformed = transformed.replace(/WITH\s*\(\s*UPDLOCK\s*,\s*HOLDLOCK\s*\)/gi, 'FOR UPDATE');
+            transformed = transformed.replace(/\[([a-zA-Z0-9_]+)\]/g, '$1');
+
+            const paramValues = [];
+            let paramIndex = 1;
+            transformed = transformed.replace(/@([a-zA-Z0-9_]+)\b/g, (match, paramName) => {
+                if (this.inputs.has(paramName)) {
+                    paramValues.push(this.inputs.get(paramName));
+                    return `$${paramIndex++}`;
+                }
+                return match;
+            });
+
+            if (topLimit && !/\bLIMIT\s+\d+/i.test(transformed)) {
+                transformed += ` LIMIT ${topLimit}`;
+            }
+
+            const res = await this.executor.query(transformed, paramValues);
+            return {
+                recordset: res.rows || [],
+                recordsets: [res.rows || []],
+                rowsAffected: [res.rowCount || 0]
+            };
+        }
+
+        async execute(procName) {
+            if (procName === 'sp_check_thesis_defense_gatekeeper') {
+                const studentId = this.inputs.get('p_student_id');
+                const res = await this.executor.query(
+                    'SELECT * FROM sp_check_thesis_defense_gatekeeper($1)',
+                    [studentId]
+                );
+                const row = res.rows[0] || { p_is_eligible: true, p_message: '' };
+                return {
+                    output: {
+                        p_is_eligible: row.p_is_eligible,
+                        p_message: row.p_message
+                    }
+                };
+            }
+            throw new Error(`Chưa hỗ trợ execute procedure: ${procName}`);
+        }
+    }
+
+    sql = fakeSql;
+    poolPromise = pgPool.connect().then(client => {
+        client.release();
+        console.log('✅ [Database] Đã kết nối thành công tới Supabase (PostgreSQL)!');
+        return {
+            request: () => new PgRequest(pgPool)
+        };
+    });
+} else {
+    // Chế độ Windows Local SQL Server
+    try {
+        sql = require('mssql/msnodesqlv8');
+    } catch {
+        sql = require('mssql');
+    }
+
+    const primaryConnectionString = `Driver={${process.env.DB_DRIVER || 'ODBC Driver 18 for SQL Server'}};Server=${process.env.DB_SERVER || 'localhost'};Database=${process.env.DB_NAME || 'agu_postgrad_db'};Trusted_Connection=yes;TrustServerCertificate=yes;`;
+    const fallbackConnectionString = `Driver={${process.env.FALLBACK_DRIVER || 'SQL Server'}};Server=${process.env.DB_SERVER || 'localhost'};Database=${process.env.DB_NAME || 'agu_postgrad_db'};Trusted_Connection=yes;`;
 
 async function ensureAdmissionProfileSchema(pool) {
     try {
@@ -122,10 +263,11 @@ async function connectToDatabase() {
     return pool;
 }
 
-const poolPromise = connectToDatabase().catch(error => {
-    console.error('❌ [Database] Không thể cập nhật schema học phí:', error.message);
-    throw error;
-});
+    poolPromise = connectToDatabase().catch(error => {
+        console.error('❌ [Database] Không thể cập nhật schema học phí:', error.message);
+        throw error;
+    });
+}
 
 // Helper ghi Audit Log nghiệp vụ nhạy cảm
 async function writeAuditLog(userId, action, tableName, recordId, oldData, newData, ip) {

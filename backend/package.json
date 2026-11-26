@@ -19,10 +19,13 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.5",
     "jsonwebtoken": "^9.0.3",
-    "msnodesqlv8": "^5.5.0",
     "mssql": "^12.7.4",
     "multer": "^2.4.0",
     "node-cron": "^4.6.0",
+    "pg": "^8.23.1",
     "socket.io": "^4.8.4"
+  },
+  "optionalDependencies": {
+    "msnodesqlv8": "^5.5.0"
   }
 }

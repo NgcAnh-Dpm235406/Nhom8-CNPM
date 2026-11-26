@@ -1,0 +1,24 @@
+{
+  "name": "AGU PostGrad Master System (Node.js & Vite)",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [5000, 5173],
+  "portsAttributes": {
+    "5000": {
+      "label": "AGU Backend API",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "AGU Frontend UI",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "cd backend && npm install && cd ../frontend && npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
