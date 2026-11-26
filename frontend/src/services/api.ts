@@ -173,6 +173,19 @@ export const api = {
   admin: {
     getTuition: () =>
       request<{ success: boolean; tuitionList: AdminTuitionRecord[] }>('/admin/tuition'),
+    getStudentCredits: (studentId: number, semesterId: number) =>
+      request<{
+        success: boolean;
+        totalCredits: number;
+        creditPrice: number;
+        calculatedTuition: number;
+        courses: { course_code: string; course_name: string; credits: number; class_name: string }[];
+      }>(`/admin/tuition/student-credits?studentId=${studentId}&semesterId=${semesterId}`),
+    autoGenerateTuition: (body: { semesterId: number; dueDate: string }) =>
+      request<{ success: boolean; message: string; createdCount: number }>('/admin/tuition/auto-generate', {
+        method: 'POST',
+        body: JSON.stringify(body)
+      }),
     createTuition: (body: { studentId: number; semesterId: number; baseAmount: number; dueDate: string; paidAmount?: number; latePenaltyFee?: number }) =>
       request<{ success: boolean; message: string }>('/admin/tuition', { method: 'POST', body: JSON.stringify(body) }),
     updateTuition: (id: number, body: { baseAmount: number; dueDate: string; paidAmount: number; latePenaltyFee: number }) =>

@@ -161,6 +161,7 @@ export const Navbar: FC<Props> = ({ activeTab, setActiveTab, user, onLogout }) =
   const links: { tab: TabType; label: string }[] = user
     ? [
         { tab: 'home', label: 'Trang Chủ' },
+        { tab: 'forms' as const, label: 'Biểu mẫu SĐH' },
         ...(user.roleCode === 'STUDENT'
           ? [
               { tab: 'student' as const, label: 'Dashboard Học Viên' },
@@ -182,6 +183,7 @@ export const Navbar: FC<Props> = ({ activeTab, setActiveTab, user, onLogout }) =
       ]
     : [
         { tab: 'home', label: 'Trang Chủ' },
+        { tab: 'forms' as const, label: 'Biểu mẫu SĐH' },
         { tab: 'login', label: 'Đăng Nhập' },
         { tab: 'register', label: 'Nộp Hồ Sơ Tuyển Sinh' },
         { tab: 'lookup', label: 'Tra Cứu Kết Quả' }

@@ -11,6 +11,7 @@ import { StudentDashboard } from './features/student/StudentDashboard';
 import { StudentProfilePage } from './features/student/StudentProfilePage';
 import { FacultyDashboard } from './features/faculty/FacultyDashboard';
 import { AdminDashboard } from './features/admin/BangDieuKhienQuanTri';
+import { FormsPage } from './features/forms/FormsPage';
 
 interface AuthSession {
   token: string;
@@ -77,11 +78,11 @@ export default function App() {
 
   const allowedTabs: TabType[] = session
     ? session.user.roleCode === 'STUDENT'
-      ? ['home', 'student', 'student-profile']
+      ? ['home', 'forms', 'student', 'student-profile']
       : session.user.roleCode === 'LECTURER'
-        ? ['home', 'faculty']
-        : ['home', 'admin-overview', 'admin-students', 'admin-admissions', 'admin-committees', 'admin-lecturers', 'admin-academics', 'admin-tuition']
-    : ['home', 'register', 'lookup', 'login'];
+        ? ['home', 'forms', 'faculty']
+        : ['home', 'forms', 'admin-overview', 'admin-students', 'admin-admissions', 'admin-committees', 'admin-lecturers', 'admin-academics', 'admin-tuition']
+    : ['home', 'forms', 'register', 'lookup', 'login'];
 
   const handleNavigate = (tab: TabType, majorCode?: string) => {
     if (!allowedTabs.includes(tab)) return;
@@ -115,6 +116,7 @@ export default function App() {
 
       <main className="flex-1 pb-16">
         {activeTab === 'home' && <HomePage onNavigate={handleNavigate} />}
+        {activeTab === 'forms' && <FormsPage />}
         {activeTab === 'register' && allowedTabs.includes('register') && (
           <RegisterPage
             initialMajorCode={selectedMajor}

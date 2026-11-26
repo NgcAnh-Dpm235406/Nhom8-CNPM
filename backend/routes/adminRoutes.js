@@ -8,6 +8,8 @@ router.use(verifyToken, requireRoles('ADMIN'));
 router.get('/overview-stats', adminController.getOverviewStats);
 router.get('/students', adminController.getStudents);
 router.get('/tuition', adminController.getTuitionList);
+router.get('/tuition/student-credits', adminController.getStudentCredits);
+router.post('/tuition/auto-generate', adminController.autoGenerateTuitionForSemester);
 router.post('/tuition', adminController.createTuition);
 router.put('/tuition/:id', adminController.updateTuition);
 router.put('/tuition/:id/payment-slip/review', adminController.reviewTuitionPaymentSlip);

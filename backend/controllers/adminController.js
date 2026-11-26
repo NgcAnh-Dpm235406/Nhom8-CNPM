@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { sql, poolPromise, writeAuditLog } = require('../config/db');
+const { syncStudentTuition } = require('./studentController');
 
 const validDegrees = ['Tiến sĩ', 'Phó Giáo sư', 'Giáo sư'];
 
@@ -539,11 +540,27 @@ exports.deleteLecturer = async (req, res) => {
 exports.getTuitionList = async (req, res) => {
     try {
         const pool = await poolPromise;
+
+        // Tự động đồng bộ học phí theo số tín chỉ đăng ký cho các học viên
+        const registeredStudents = await pool.request().query(`
+            SELECT DISTINCT student_id FROM course_registrations
+        `);
+        for (const row of registeredStudents.recordset) {
+            await syncStudentTuition(pool, row.student_id);
+        }
+
         const result = await pool.request().query(`
             SELECT t.tuition_id, t.student_id, t.semester_id, t.base_amount, t.due_date,
                    t.paid_amount, t.late_penalty_fee, t.outstanding_balance, t.status,
                    t.payment_slip_file, t.payment_slip_status, t.payment_slip_submitted_at, t.payment_slip_note,
-                   s.student_code, p.full_name AS student_name, sem.semester_name
+                   s.student_code, p.full_name AS student_name, sem.semester_name,
+                   ISNULL((
+                       SELECT SUM(c.credits)
+                       FROM course_registrations cr
+                       JOIN course_classes cc ON cr.class_id = cc.class_id
+                       JOIN courses c ON cc.course_id = c.course_id
+                       WHERE cr.student_id = t.student_id AND cc.semester_id = t.semester_id
+                   ), 0) AS registered_credits
             FROM tuition_fees t
             JOIN students s ON s.student_id=t.student_id
             JOIN admission_profiles p ON p.profile_id=s.profile_id
@@ -551,6 +568,89 @@ exports.getTuitionList = async (req, res) => {
             ORDER BY sem.semester_id DESC, s.student_code
         `);
         return res.json({ success: true, tuitionList: result.recordset });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+exports.getStudentCredits = async (req, res) => {
+    const { studentId, semesterId } = req.query;
+    if (!studentId || !semesterId) {
+        return res.status(400).json({ success: false, message: 'Thiếu studentId hoặc semesterId.' });
+    }
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('studentId', sql.BigInt, Number(studentId))
+            .input('semesterId', sql.Int, Number(semesterId))
+            .query(`
+                SELECT c.course_id, c.course_code, c.course_name, c.credits, cc.class_name
+                FROM course_registrations cr
+                JOIN course_classes cc ON cr.class_id = cc.class_id
+                JOIN courses c ON cc.course_id = c.course_id
+                WHERE cr.student_id = @studentId AND cc.semester_id = @semesterId
+            `);
+        const courses = result.recordset || [];
+        const totalCredits = courses.reduce((sum, item) => sum + (Number(item.credits) || 0), 0);
+        const creditPrice = 750000;
+        const calculatedTuition = totalCredits * creditPrice;
+        return res.json({
+            success: true,
+            totalCredits,
+            creditPrice,
+            calculatedTuition,
+            courses
+        });
+    } catch (err) {
+        return sendDatabaseError(res, err);
+    }
+};
+
+exports.autoGenerateTuitionForSemester = async (req, res) => {
+    const { semesterId, dueDate } = req.body || {};
+    if (!semesterId || !dueDate) {
+        return res.status(400).json({ success: false, message: 'Vui lòng chọn học kỳ và hạn nộp học phí.' });
+    }
+    try {
+        const pool = await poolPromise;
+        const candidateStudents = await pool.request()
+            .input('semesterId', sql.Int, Number(semesterId))
+            .query(`
+                SELECT cr.student_id, SUM(c.credits) AS total_credits
+                FROM course_registrations cr
+                JOIN course_classes cc ON cr.class_id = cc.class_id
+                JOIN courses c ON cc.course_id = c.course_id
+                WHERE cc.semester_id = @semesterId
+                  AND cr.student_id NOT IN (SELECT student_id FROM tuition_fees WHERE semester_id = @semesterId)
+                GROUP BY cr.student_id
+            `);
+        
+        let createdCount = 0;
+        for (const row of candidateStudents.recordset) {
+            const credits = Number(row.total_credits) || 0;
+            const baseAmount = credits * 750000;
+            if (baseAmount > 0) {
+                await pool.request()
+                    .input('studentId', sql.BigInt, row.student_id)
+                    .input('semesterId', sql.Int, Number(semesterId))
+                    .input('baseAmount', sql.Decimal(12, 2), baseAmount)
+                    .input('dueDate', sql.Date, dueDate)
+                    .input('paidAmount', sql.Decimal(12, 2), 0)
+                    .input('latePenaltyFee', sql.Decimal(12, 2), 0)
+                    .input('status', sql.NVarChar(30), 'Chưa thanh toán')
+                    .query(`
+                        INSERT INTO tuition_fees
+                            (student_id, semester_id, base_amount, due_date, paid_amount, late_penalty_fee, status)
+                        VALUES (@studentId, @semesterId, @baseAmount, @dueDate, @paidAmount, @latePenaltyFee, @status)
+                    `);
+                createdCount++;
+            }
+        }
+        return res.json({
+            success: true,
+            message: `Đã tự động tạo ${createdCount} khoản học phí theo số tín chỉ đăng ký (750.000 VNĐ/TC).`,
+            createdCount
+        });
     } catch (err) {
         return sendDatabaseError(res, err);
     }

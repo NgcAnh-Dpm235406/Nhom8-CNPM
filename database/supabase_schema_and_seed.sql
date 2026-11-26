@@ -519,18 +519,21 @@ INSERT INTO roles (role_code, role_name) VALUES
 ('STUDENT', 'Học viên Cao học Thạc sĩ'),
 ('ACCOUNTANT', 'Phòng Kế hoạch - Tài chính (Kế toán)');
 
--- 2. Ngành Đào tạo Thạc sĩ thực tế tại AGU
+-- 2. Ngành Đào tạo Thạc sĩ thực tế tại AGU (Trường Đại học An Giang - ĐHQG-HCM)
 INSERT INTO majors (major_code, major_name) VALUES
-('8480205', 'Kỹ thuật phần mềm (Software Engineering)'),
-('8480101', 'Khoa học máy tính (Computer Science)'),
-('8340101', 'Quản trị kinh doanh (Business Administration)'),
+('8480201', 'Công nghệ thông tin (Information Technology)'),
+('8850101', 'Quản lý tài nguyên và môi trường (Environmental Management)'),
+('8140114', 'Quản lý giáo dục (Educational Management)'),
 ('8620110', 'Khoa học cây trồng (Crop Science)'),
-('8140111', 'Lý luận và PPDH bộ môn Toán (Mathematics Education)');
+('8420201', 'Công nghệ sinh học (Biotechnology)'),
+('8540101', 'Công nghệ thực phẩm (Food Technology)'),
+('8620105', 'Chăn nuôi (Animal Husbandry)'),
+('8440102', 'Vật lý lý thuyết và vật lý toán (Theoretical & Mathematical Physics)');
 
 -- 3. Chương trình đào tạo (Curriculums)
 INSERT INTO curriculums (major_id, cohort, orientation, total_credits, version) VALUES
-(1, 'K2024-2026', 'Ứng dụng', 60, 'AGU-KTPM-2024'),
-(2, 'K2024-2026', 'Nghiên cứu', 60, 'AGU-KHMT-2024');
+(1, 'K2024-2026', 'Ứng dụng', 60, 'AGU-CNTT-2024'),
+(2, 'K2024-2026', 'Nghiên cứu', 60, 'AGU-TNMT-2024');
 
 -- 4. Tài khoản người dùng (Users) - Mật khẩu thật: '123456'
 -- Bcrypt hash thật: $2b$10$zHFXCDK4p7kzE19dOT3j7.7/TCqLtt9rHDh3VCdNxVm9KotEksEGm
@@ -570,17 +573,21 @@ INSERT INTO semesters (semester_name, start_date, end_date) VALUES
 ('Học kỳ 1 (2024-2025)', '2024-09-01', '2025-01-15');
 
 INSERT INTO tuition_fees (student_id, semester_id, base_amount, due_date, paid_amount, status) VALUES
-(1, 1, 14500000.00, '2024-10-15', 14500000.00, 'Hoàn thành'),
-(2, 1, 14500000.00, '2024-10-15', 14500000.00, 'Hoàn thành');
+(1, 1, 5250000.00, '2024-10-15', 5250000.00, 'Hoàn thành'),
+(2, 1, 5250000.00, '2024-10-15', 5250000.00, 'Hoàn thành');
 
 -- 9. Môn học, Khung CTĐT, Lớp học phần, Lịch học & Bảng điểm
 INSERT INTO courses (course_code, course_name, credits, prerequisite_course_id) VALUES
-('SDH001', 'Triết học (Cao học)', 4, NULL),
+('SDH801', 'Phương pháp nghiên cứu khoa học trong CNTT', 3, NULL),
 ('KTPM801', 'Kiến trúc phần mềm nâng cao', 3, NULL),
-('KTPM802', 'Phát triển hệ thống thông tin hiện đại', 3, 2),
-('KTPM803', 'Phương pháp nghiên cứu khoa học CNTT', 3, NULL),
-('KTPM804', 'Bảo mật ứng dụng và Dữ liệu lớn', 3, NULL),
-('KHMT801', 'Học máy nâng cao và Học sâu', 3, NULL);
+('KTPM802', 'Phát triển hệ thống phân tán và Cloud Computing', 3, 2),
+('KHMT801', 'Trí tuệ nhân tạo nâng cao và Machine Learning', 3, NULL),
+('KHMT802', 'Học sâu và Xử lý ngôn ngữ tự nhiên (NLP)', 3, 4),
+('ATTT801', 'An ninh mạng và Bảo mật dữ liệu lớn', 3, NULL),
+('CSDL801', 'Cơ sở dữ liệu nâng cao và NoSQL', 3, NULL),
+('KTPM803', 'Quản trị dự án phần mềm chuyên nghiệp', 3, NULL),
+('KHMT803', 'Khai phá dữ liệu và Phân tích nghiệp vụ (Big Data Analytics)', 3, NULL),
+('SDH802', 'Tiếng Anh chuyên ngành Sau đại học', 3, NULL);
 
 INSERT INTO curriculum_courses (curriculum_id, course_id, course_type, recommended_semester) VALUES
 (1, 1, 'Bắt buộc', 1),
@@ -588,19 +595,37 @@ INSERT INTO curriculum_courses (curriculum_id, course_id, course_type, recommend
 (1, 3, 'Bắt buộc', 2),
 (1, 4, 'Bắt buộc', 1),
 (1, 5, 'Tự chọn', 2),
+(1, 6, 'Tự chọn', 2),
+(1, 7, 'Bắt buộc', 1),
+(1, 8, 'Tự chọn', 2),
 (2, 1, 'Bắt buộc', 1),
 (2, 4, 'Bắt buộc', 1),
-(2, 6, 'Bắt buộc', 1);
+(2, 9, 'Bắt buộc', 2),
+(2, 10, 'Bắt buộc', 1);
 
 INSERT INTO course_classes (course_id, semester_id, class_name, max_students, status) VALUES
-(1, 1, 'Lớp Triết học Cao học - K24', 35, 'Mở đăng ký'),
-(2, 1, 'Lớp Kiến trúc phần mềm nâng cao - K24', 30, 'Mở đăng ký'),
-(4, 1, 'Lớp Phương pháp NCKH CNTT - K24', 30, 'Mở đăng ký');
+(1, 1, 'CH24_NCKH', 35, 'Mở đăng ký'),
+(2, 1, 'CH24_KTPM01', 30, 'Mở đăng ký'),
+(3, 1, 'CH24_CLOUD', 30, 'Mở đăng ký'),
+(4, 1, 'CH24_AIML', 35, 'Mở đăng ký'),
+(5, 1, 'CH24_NLP', 30, 'Mở đăng ký'),
+(6, 1, 'CH24_SEC', 30, 'Mở đăng ký'),
+(7, 1, 'CH24_NOSQL', 30, 'Mở đăng ký'),
+(8, 1, 'CH24_PMGT', 35, 'Mở đăng ký'),
+(9, 1, 'CH24_BIGDATA', 30, 'Mở đăng ký'),
+(10, 1, 'CH24_ENG', 40, 'Mở đăng ký');
 
 INSERT INTO schedules (class_id, lecturer_id, room_name, day_of_week, start_shift, end_shift) VALUES
-(1, 1, 'Phòng A201 - Khu Trung tâm AGU', 7, 1, 4),
-(2, 2, 'Phòng Lab Sau Đại học - Khoa CNTT', 7, 6, 9),
-(3, 3, 'Phòng B105 - Khoa CNTT', 8, 1, 4);
+(1, 1, 'Phòng A201', 7, 1, 4),
+(2, 3, 'Lab CNTT 1', 7, 6, 9),
+(3, 4, 'Lab CNTT 2', 8, 1, 4),
+(4, 2, 'Phòng A202', 8, 6, 9),
+(5, 2, 'Lab AI & Data', 6, 11, 14),
+(6, 5, 'Phòng B102', 7, 1, 4),
+(7, 1, 'Lab CNTT 1', 7, 6, 9),
+(8, 3, 'Phòng Hội thảo A', 8, 1, 4),
+(9, 4, 'Lab Big Data', 8, 6, 9),
+(10, 5, 'Phòng A205', 2, 11, 14);
 
 INSERT INTO course_registrations (student_id, class_id) VALUES (1, 1), (1, 2);
 

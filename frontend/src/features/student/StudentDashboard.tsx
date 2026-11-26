@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   BookOpen,
@@ -19,7 +19,8 @@ import {
   ReceiptText,
   Upload,
   X,
-  FileDown
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useBrowserAlert } from '../../hooks/useBrowserAlert';
@@ -43,7 +44,7 @@ import type {
   TurnitinCheckRecord
 } from '../../types';
 
-type DashboardTab = 'thesis' | 'gatekeeper' | 'courses' | 'grades-tuition' | 'forms' | 'defense';
+type DashboardTab = 'thesis' | 'gatekeeper' | 'courses' | 'grades-tuition' | 'defense';
 
 const getSavedDashboardTab = (): DashboardTab => {
   const savedTab = sessionStorage.getItem('agu_student_subtab');
@@ -52,7 +53,6 @@ const getSavedDashboardTab = (): DashboardTab => {
     savedTab === 'gatekeeper' ||
     savedTab === 'courses' ||
     savedTab === 'grades-tuition' ||
-    savedTab === 'forms' ||
     savedTab === 'defense'
   ) {
     return savedTab;
@@ -109,6 +109,7 @@ export const StudentDashboard = () => {
   const [totalDebt, setTotalDebt] = useState(0);
   const [selectedTuition, setSelectedTuition] = useState<StudentTuitionRecord | null>(null);
   const [paymentSlipFile, setPaymentSlipFile] = useState<File | null>(null);
+  const [expandedTuitionId, setExpandedTuitionId] = useState<number | null>(null);
 
   // Modal / Form state cho các hành động nộp minh chứng
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -604,18 +605,6 @@ export const StudentDashboard = () => {
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('forms')}
-          className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition ${
-            activeTab === 'forms'
-              ? 'bg-sky-600 text-white shadow'
-              : 'bg-white text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <FileDown className="h-4 w-4" />
-          <span>5. Biểu mẫu</span>
-        </button>
-        <button
-          type="button"
           onClick={() => setActiveTab('defense')}
           className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition ${
             activeTab === 'defense'
@@ -624,13 +613,13 @@ export const StudentDashboard = () => {
           }`}
         >
           <Award className="h-4 w-4" />
-          <span>6. Hội đồng</span>
+          <span>5. Hội đồng bảo vệ</span>
         </button>
       </div>
 
-      {(activeTab === 'forms' || activeTab === 'defense') && (
+      {activeTab === 'defense' && (
         <StudentSupportSection
-          section={activeTab}
+          section="defense"
           defense={defense}
           defenseLoading={isLoading}
         />
@@ -680,14 +669,40 @@ export const StudentDashboard = () => {
             </section>
           )}
 
-          {/* Đăng ký đề tài */}
+          {/* Thông tin Đề tài & Tiến độ Luận văn Thạc sĩ */}
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-              <FileText className="h-5 w-5 text-sky-600" />
-              {thesis ? 'Thông tin đề tài luận văn Thạc sĩ' : 'Đăng ký đề tài luận văn'}
-            </h3>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {thesis ? 'Thông tin đề tài & Tiến độ luận văn' : 'Đăng ký đề tài luận văn Thạc sĩ'}
+                  </h3>
+                  {thesis && (
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Giai đoạn: <strong className="text-sky-700">{thesis.current_stage}</strong> · Trạng thái: <strong className="text-amber-700">{thesis.status}</strong>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {thesis && (
+                <button
+                  type="button"
+                  onClick={() => setIsReportModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  Nộp báo cáo mốc
+                </button>
+              )}
+            </div>
+
             {hasActiveAdvisor ? (
               <form onSubmit={handleThesisSubmit} className="mt-4 space-y-3">
+                <label className="block text-xs font-semibold text-slate-700">Tên đề tài nghiên cứu (chính thức)</label>
                 <textarea
                   required
                   minLength={10}
@@ -696,61 +711,39 @@ export const StudentDashboard = () => {
                   value={thesisTitle}
                   onChange={e => setThesisTitle(e.target.value)}
                   placeholder="Nhập tên đề tài luận văn dự kiến..."
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                  className="w-full rounded-xl border border-slate-300 p-3 text-sm focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-medium text-slate-800"
                 />
-                <div className="flex items-center justify-between">
-                  {thesis && (
-                    <span className="text-xs text-slate-500">
-                      Giai đoạn: <strong className="text-sky-700">{thesis.current_stage}</strong> · Trạng thái: <strong className="text-amber-700">{thesis.status}</strong>
-                    </span>
-                  )}
+                <div className="flex items-center justify-end">
                   <button
                     type="submit"
                     disabled={isSubmitting || thesisTitle.trim().length < 10}
-                    className="ml-auto rounded-xl bg-sky-600 px-5 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-50"
+                    className="rounded-xl bg-sky-600 px-5 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-50 transition"
                   >
-                    {isSubmitting ? 'Đang gửi...' : thesis ? 'Cập nhật đề tài' : 'Đăng ký đề tài'}
+                    {isSubmitting ? 'Đang lưu...' : thesis ? 'Cập nhật tên đề tài' : 'Đăng ký đề tài'}
                   </button>
                 </div>
               </form>
             ) : (
-              <p className="mt-2 text-sm text-amber-700 bg-amber-50 p-3 rounded-xl">
-                Bạn cần được Giảng viên hướng dẫn chấp nhận trước khi đăng ký tên đề tài.
+              <p className="mt-4 text-sm text-amber-800 bg-amber-50 p-4 rounded-2xl border border-amber-200">
+                Bạn cần được Giảng viên hướng dẫn chấp nhận hướng dẫn trước khi đăng ký tên đề tài.
               </p>
             )}
-          </section>
 
-          {/* Tiến độ tổng quan */}
-          {thesis && (
-            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-base font-bold text-slate-900">{thesis.thesis_title}</h4>
-                  <p className="text-xs text-slate-500 mt-1">Mốc hiện tại: <span className="font-semibold text-sky-700">{thesis.current_stage}</span></p>
+            {thesis && (
+              <div className="mt-6 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span className="font-semibold">Tiến độ thực hiện luận văn</span>
+                  <span className="font-bold text-sky-700">{thesis.progress_percent || 0}%</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsReportModalOpen(true)}
-                  className="flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700"
-                >
-                  <PlusCircle className="h-4 w-4" />
-                  Nộp báo cáo mốc
-                </button>
-              </div>
-              <div className="mt-4">
-                <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 transition-all duration-500"
                     style={{ width: `${Math.min(100, Math.max(0, thesis.progress_percent || 0))}%` }}
                   />
                 </div>
-                <div className="mt-1.5 flex justify-between text-xs text-slate-500">
-                  <span>Tiến độ tổng thể</span>
-                  <span className="font-bold text-sky-700">{thesis.progress_percent || 0}%</span>
-                </div>
               </div>
-            </section>
-          )}
+            )}
+          </section>
 
           {/* Bảng danh sách các bài nộp theo từng mốc & Cảnh báo Xanh/Vàng/Đỏ */}
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1246,7 +1239,9 @@ export const StudentDashboard = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Quản lý Học phí Sau Đại học</h3>
-                <p className="text-xs text-slate-500">Học phí Thạc sĩ quy định đóng theo từng học kỳ trước ngày hết hạn.</p>
+                <p className="text-xs text-slate-500">
+                  Học phí Thạc sĩ tính theo số tín chỉ học phần đăng ký (Đơn giá: <strong>750.000 VNĐ / tín chỉ</strong> theo Quy định AGU).
+                </p>
               </div>
               <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 text-right">
                 <p className="text-xs text-amber-800">Tổng công nợ hiện tại</p>
@@ -1262,78 +1257,174 @@ export const StudentDashboard = () => {
                   <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
                     <tr>
                       <th className="p-3">Học kỳ</th>
+                      <th className="p-3">Số TC đăng ký</th>
                       <th className="p-3">Học phí gốc</th>
                       <th className="p-3">Hạn nộp</th>
                       <th className="p-3">Đã thanh toán</th>
                       <th className="p-3">Phạt trễ</th>
                       <th className="p-3">Còn nợ</th>
                       <th className="p-3">Trạng thái</th>
-                      <th className="p-3">Biên lai</th>
-                      <th className="p-3 text-right">Thanh toán</th>
+                      <th className="p-3">Biên lai / Thu nợ</th>
+                      <th className="p-3 text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {tuitionList.map(t => (
-                      <tr key={t.tuition_id} className="hover:bg-slate-50">
-                        <td className="p-3 font-semibold text-slate-800">{t.semester_name}</td>
-                        <td className="p-3 text-slate-700">{Number(t.base_amount).toLocaleString('vi-VN')} VNĐ</td>
-                        <td className="p-3 text-slate-600">{t.due_date?.slice(0, 10)}</td>
-                        <td className="p-3 font-medium text-emerald-700">{Number(t.paid_amount).toLocaleString('vi-VN')} VNĐ</td>
-                        <td className="p-3 text-rose-600">{Number(t.late_penalty_fee).toLocaleString('vi-VN')} VNĐ</td>
-                        <td className="p-3 font-bold text-amber-900">{Number(t.outstanding_balance).toLocaleString('vi-VN')} VNĐ</td>
-                        <td className="p-3">
-                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                            t.status === 'Hoàn thành' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {t.status}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          {t.payment_slip_file ? (
-                            <div className="space-y-1">
-                              <a
-                                href={t.payment_slip_file}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-sky-700 hover:underline"
-                              >
-                                Xem ảnh
-                              </a>
-                              <p className={`text-[10px] font-semibold ${
-                                t.payment_slip_status === 'Đã xác nhận'
-                                  ? 'text-emerald-700'
-                                  : t.payment_slip_status === 'Từ chối'
-                                    ? 'text-rose-700'
-                                    : 'text-amber-700'
+                    {tuitionList.map(t => {
+                      const isExpanded = expandedTuitionId === t.tuition_id;
+                      const hasCourses = Boolean(t.courses && t.courses.length > 0);
+                      const isCompleted = t.status === 'Hoàn thành' || Number(t.outstanding_balance) <= 0;
+
+                      return (
+                        <React.Fragment key={t.tuition_id}>
+                          <tr className="hover:bg-slate-50 transition">
+                            <td className="p-3 font-semibold text-slate-800">{t.semester_name}</td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-sky-800">
+                                  {t.registered_credits !== undefined ? `${t.registered_credits} TC` : 'Theo CTĐT'}
+                                </span>
+                                {hasCourses && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedTuitionId(isExpanded ? null : t.tuition_id)}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 hover:bg-sky-100 border border-sky-200 transition"
+                                    title="Xem chi tiết từng môn học cấu thành học phí"
+                                  >
+                                    <span>{isExpanded ? 'Thu gọn' : 'Xem chi tiết'}</span>
+                                    {isExpanded ? <ChevronUp className="h-3 w-3 text-sky-600" /> : <ChevronDown className="h-3 w-3 text-sky-600" />}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-3 text-slate-700 font-medium">{Number(t.base_amount).toLocaleString('vi-VN')} VNĐ</td>
+                            <td className="p-3 text-slate-600">{t.due_date?.slice(0, 10)}</td>
+                            <td className="p-3 font-medium text-emerald-700">{Number(t.paid_amount).toLocaleString('vi-VN')} VNĐ</td>
+                            <td className="p-3 text-rose-600">{Number(t.late_penalty_fee).toLocaleString('vi-VN')} VNĐ</td>
+                            <td className="p-3 font-bold text-amber-900">{Number(t.outstanding_balance).toLocaleString('vi-VN')} VNĐ</td>
+                            <td className="p-3">
+                              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                                isCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                               }`}>
-                                {t.payment_slip_status}
-                              </p>
-                              {t.payment_slip_note && <p className="max-w-40 text-[10px] text-rose-700">{t.payment_slip_note}</p>}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">Chưa gửi</span>
+                                {t.status}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              {t.payment_slip_file ? (
+                                <div className="space-y-1">
+                                  <a
+                                    href={t.payment_slip_file}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="font-semibold text-sky-700 hover:underline inline-flex items-center gap-1"
+                                  >
+                                    Xem ảnh
+                                  </a>
+                                  <p className={`text-[10px] font-semibold ${
+                                    t.payment_slip_status === 'Đã xác nhận'
+                                      ? 'text-emerald-700'
+                                      : t.payment_slip_status === 'Từ chối'
+                                        ? 'text-rose-700'
+                                        : 'text-amber-700'
+                                  }`}>
+                                    {t.payment_slip_status}
+                                  </p>
+                                  {t.payment_slip_note && <p className="max-w-40 text-[10px] text-rose-700">{t.payment_slip_note}</p>}
+                                </div>
+                              ) : isCompleted ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                                  Đã thu (Ngân hàng/Kế toán)
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-medium text-amber-700">Chưa nộp biên lai</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {hasCourses && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedTuitionId(isExpanded ? null : t.tuition_id)}
+                                    className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+                                  >
+                                    {isExpanded ? 'Ẩn môn' : 'Chi tiết HP'}
+                                  </button>
+                                )}
+                                {Number(t.outstanding_balance) > 0 ? (
+                                  <button
+                                    type="button"
+                                    disabled={isSubmitting || t.payment_slip_status === 'Chờ xác nhận'}
+                                    onClick={() => {
+                                      setPaymentSlipFile(null);
+                                      setSelectedTuition(t);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <ReceiptText className="h-3.5 w-3.5" />
+                                    {t.payment_slip_status === 'Chờ xác nhận' ? 'Đang xác nhận' : 'Gửi biên lai'}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs font-semibold text-emerald-700">Đã xong</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Dòng mở rộng chi tiết học phần tính tiền */}
+                          {isExpanded && hasCourses && (
+                            <tr className="bg-sky-50/50">
+                              <td colSpan={10} className="p-4">
+                                <div className="rounded-2xl border border-sky-200 bg-white p-4 shadow-inner">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h5 className="font-bold text-xs text-sky-900 uppercase tracking-wide">
+                                      Chi tiết học phần đăng ký tính học phí · {t.semester_name}
+                                    </h5>
+                                    <span className="text-xs text-slate-600">
+                                      Đơn giá chuẩn: <strong>750.000 VNĐ / tín chỉ</strong>
+                                    </span>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs">
+                                      <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                                        <tr>
+                                          <th className="p-2">Mã HP</th>
+                                          <th className="p-2">Tên học phần</th>
+                                          <th className="p-2 text-center">Số tín chỉ</th>
+                                          <th className="p-2 text-right">Đơn giá / TC</th>
+                                          <th className="p-2 text-right">Thành tiền</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {t.courses?.map(course => (
+                                          <tr key={course.course_id} className="hover:bg-slate-50">
+                                            <td className="p-2 font-mono font-semibold text-sky-800">{course.course_code}</td>
+                                            <td className="p-2 font-medium text-slate-800">{course.course_name}</td>
+                                            <td className="p-2 text-center font-bold text-slate-700">{course.credits}</td>
+                                            <td className="p-2 text-right text-slate-600">750.000 VNĐ</td>
+                                            <td className="p-2 text-right font-bold text-emerald-700">
+                                              {(course.credits * 750000).toLocaleString('vi-VN')} VNĐ
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                      <tfoot className="border-t border-slate-200 bg-slate-50 font-bold text-slate-900">
+                                        <tr>
+                                          <td colSpan={2} className="p-2 text-right">Tổng cộng:</td>
+                                          <td className="p-2 text-center text-sky-800">{t.registered_credits || 0} TC</td>
+                                          <td className="p-2 text-right text-slate-500">—</td>
+                                          <td className="p-2 text-right text-emerald-800">
+                                            {((t.registered_credits || 0) * 750000).toLocaleString('vi-VN')} VNĐ
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td className="p-3 text-right">
-                          {Number(t.outstanding_balance) > 0 ? (
-                            <button
-                              type="button"
-                              disabled={isSubmitting || t.payment_slip_status === 'Chờ xác nhận'}
-                              onClick={() => {
-                                setPaymentSlipFile(null);
-                                setSelectedTuition(t);
-                              }}
-                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <ReceiptText className="h-3.5 w-3.5" />
-                              {t.payment_slip_status === 'Chờ xác nhận' ? 'Đang xác nhận' : 'Gửi biên lai'}
-                            </button>
-                          ) : (
-                            <span className="text-xs font-semibold text-emerald-700">Đã xong</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

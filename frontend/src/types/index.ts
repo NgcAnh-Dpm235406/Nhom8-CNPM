@@ -1,6 +1,7 @@
 export type AdminSection = 'overview' | 'students' | 'admissions' | 'committees' | 'lecturers' | 'academics' | 'tuition';
 export type TabType =
   | 'home'
+  | 'forms'
   | 'register'
   | 'lookup'
   | 'student'
@@ -366,6 +367,7 @@ export interface AdminTuitionRecord {
   student_code: string;
   student_name: string;
   semester_name: string;
+  registered_credits?: number;
 }
 
 export interface StudentRegisteredCourse {
@@ -395,8 +397,17 @@ export interface StudentGradeRecord {
   semester_name: string;
 }
 
+export interface TuitionCourseItem {
+  course_id: number;
+  course_code: string;
+  course_name: string;
+  credits: number;
+  amount?: number;
+}
+
 export interface StudentTuitionRecord {
   tuition_id: number;
+  semester_id?: number;
   base_amount: number;
   due_date: string;
   paid_amount: number;
@@ -408,6 +419,9 @@ export interface StudentTuitionRecord {
   payment_slip_status: 'Chờ xác nhận' | 'Đã xác nhận' | 'Từ chối' | null;
   payment_slip_submitted_at: string | null;
   payment_slip_note: string | null;
+  registered_credits?: number;
+  credit_price?: number;
+  courses?: TuitionCourseItem[];
 }
 
 export interface StudentPaymentInfo {

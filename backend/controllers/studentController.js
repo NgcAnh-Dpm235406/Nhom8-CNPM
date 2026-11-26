@@ -139,6 +139,91 @@ exports.updateMyInfo = async (req, res) => {
     }
 };
 
+const CREDIT_PRICE = 750000; // Đơn giá 750.000 VNĐ / tín chỉ quy định AGU
+
+// Hàm tự động đồng bộ và tính toán học phí theo số tín chỉ đã đăng ký cho học viên
+const syncStudentTuition = async (pool, studentId) => {
+    if (!studentId) return;
+
+    // 1. Lấy danh sách các học kỳ mà học viên đã đăng ký học phần kèm tổng số tín chỉ
+    const registeredSemesters = await pool.request()
+        .input('studentId', sql.BigInt, studentId)
+        .query(`
+            SELECT cc.semester_id, ISNULL(SUM(c.credits), 0) AS total_credits
+            FROM course_registrations cr
+            JOIN course_classes cc ON cr.class_id = cc.class_id
+            JOIN courses c ON cc.course_id = c.course_id
+            WHERE cr.student_id = @studentId
+            GROUP BY cc.semester_id
+        `);
+
+    for (const row of registeredSemesters.recordset) {
+        const semId = row.semester_id;
+        const totalCredits = Number(row.total_credits) || 0;
+        const calculatedBase = totalCredits * CREDIT_PRICE;
+
+        // Kiểm tra xem đã có bản ghi trong tuition_fees chưa
+        const exist = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .input('semesterId', sql.Int, semId)
+            .query(`
+                SELECT tuition_id, base_amount, paid_amount, late_penalty_fee, status
+                FROM tuition_fees
+                WHERE student_id = @studentId AND semester_id = @semesterId
+            `);
+
+        if (exist.recordset.length === 0) {
+            // Chưa có bản ghi -> Tự động sinh công nợ
+            const semRes = await pool.request()
+                .input('semesterId', sql.Int, semId)
+                .query(`SELECT end_date FROM semesters WHERE semester_id = @semesterId`);
+            const dueDate = semRes.recordset[0]?.end_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+            await pool.request()
+                .input('studentId', sql.BigInt, studentId)
+                .input('semesterId', sql.Int, semId)
+                .input('baseAmount', sql.Decimal(12, 2), calculatedBase)
+                .input('dueDate', sql.Date, dueDate)
+                .input('paidAmount', sql.Decimal(12, 2), 0)
+                .input('latePenaltyFee', sql.Decimal(12, 2), 0)
+                .input('status', sql.NVarChar(30), calculatedBase > 0 ? 'Chưa thanh toán' : 'Hoàn thành')
+                .query(`
+                    INSERT INTO tuition_fees
+                        (student_id, semester_id, base_amount, due_date, paid_amount, late_penalty_fee, status)
+                    VALUES (@studentId, @semesterId, @baseAmount, @dueDate, @paidAmount, @latePenaltyFee, @status)
+                `);
+        } else {
+            // Đã có bản ghi -> Cập nhật base_amount theo số tín chỉ thực tế
+            const currentRec = exist.recordset[0];
+            const paid = Number(currentRec.paid_amount || 0);
+            const penalty = Number(currentRec.late_penalty_fee || 0);
+
+            // Cập nhật lại base_amount nếu khác với tính toán theo tín chỉ
+            if (Number(currentRec.base_amount) !== calculatedBase) {
+                const finalStatus = paid >= calculatedBase + penalty && calculatedBase > 0
+                    ? 'Hoàn thành'
+                    : paid > 0
+                    ? 'Đã thanh toán một phần'
+                    : (calculatedBase === 0 && paid === 0)
+                    ? 'Hoàn thành'
+                    : 'Chưa thanh toán';
+
+                await pool.request()
+                    .input('tuitionId', sql.BigInt, currentRec.tuition_id)
+                    .input('baseAmount', sql.Decimal(12, 2), calculatedBase)
+                    .input('status', sql.NVarChar(30), finalStatus)
+                    .query(`
+                        UPDATE tuition_fees
+                        SET base_amount = @baseAmount, status = @status
+                        WHERE tuition_id = @tuitionId
+                    `);
+            }
+        }
+    }
+};
+
+exports.syncStudentTuition = syncStudentTuition;
+
 // 2. Tra cứu học phí chi tiết từng học kỳ (GET /api/students/tuition)
 exports.getTuition = async (req, res) => {
     try {
@@ -151,11 +236,15 @@ exports.getTuition = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Thiếu mã học viên!' });
         }
 
+        // Tự động đồng bộ công nợ học phí theo các môn đã đăng ký
+        await syncStudentTuition(pool, studentId);
+
         const result = await pool.request()
             .input('studentId', sql.BigInt, studentId)
             .query(`
                 SELECT 
                     t.tuition_id,
+                    t.semester_id,
                     t.base_amount,
                     t.due_date,
                     t.paid_amount,
@@ -181,12 +270,45 @@ exports.getTuition = async (req, res) => {
                 ORDER BY sem.semester_id DESC
             `);
 
-        const totalDebt = result.recordset.reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0);
+        // Lấy danh sách môn học đã đăng ký trong từng học kỳ để tính toán chi tiết học phí
+        const coursesResult = await pool.request()
+            .input('studentId', sql.BigInt, studentId)
+            .query(`
+                SELECT 
+                    cc.semester_id,
+                    c.course_id,
+                    c.course_code,
+                    c.course_name,
+                    c.credits
+                FROM course_registrations cr
+                JOIN course_classes cc ON cr.class_id = cc.class_id
+                JOIN courses c ON cc.course_id = c.course_id
+                WHERE cr.student_id = @studentId
+            `);
+
+        const enrichedList = result.recordset.map(item => {
+            const semCourses = coursesResult.recordset.filter(c => c.semester_id === item.semester_id);
+            const registeredCredits = semCourses.reduce((sum, c) => sum + (Number(c.credits) || 0), 0);
+            return {
+                ...item,
+                credit_price: CREDIT_PRICE,
+                registered_credits: registeredCredits,
+                courses: semCourses.map(c => ({
+                    course_id: c.course_id,
+                    course_code: c.course_code,
+                    course_name: c.course_name,
+                    credits: c.credits,
+                    amount: c.credits * CREDIT_PRICE
+                }))
+            };
+        });
+
+        const totalDebt = enrichedList.reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0);
 
         res.json({
             success: true,
             totalDebt,
-            tuitionList: result.recordset
+            tuitionList: enrichedList
         });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -465,6 +587,9 @@ exports.registerCourse = async (req, res) => {
             .query(`INSERT INTO student_grades (registration_id, process_grade, exam_grade, final_grade, is_locked)
                     VALUES (@regId, NULL, NULL, NULL, 0)`);
 
+        // Tự động đồng bộ học phí theo tín chỉ đã đăng ký
+        await syncStudentTuition(pool, studentId);
+
         res.status(201).json({ success: true, message: 'Đăng ký học phần thành công!' });
     } catch (err) {
         if (err.message && err.message.includes('UQ_student_class')) {
@@ -515,6 +640,9 @@ exports.cancelCourseRegistration = async (req, res) => {
         await transaction.commit();
 
         await writeAuditLog(req.user.user_id, 'CANCEL_COURSE_REGISTRATION', 'course_registrations', registrationId, null, null, req.ip);
+
+        // Tự động đồng bộ lại học phí sau khi hủy môn
+        await syncStudentTuition(pool, studentId);
 
         return res.json({ success: true, message: `Đã hủy đăng ký lớp ${item.class_name} thành công.` });
     } catch (err) {
