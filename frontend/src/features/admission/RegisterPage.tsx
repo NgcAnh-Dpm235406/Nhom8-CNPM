@@ -35,7 +35,7 @@ const emptyForm = {
 };
 
 export const RegisterPage: React.FC<Props> = ({
-  initialMajorCode = '8480205',
+  initialMajorCode = '8480201',
   onNavigateToLookup
 }) => {
   const [formData, setFormData] = useState(emptyForm);

@@ -92,6 +92,14 @@ app.use((err, req, res, next) => {
 
 // 7. Lắng nghe trên cổng chỉ định (Mặc định: 5000)
 const PORT = process.env.PORT || 5000;
+
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    console.error('❌ [BẢO MẬT]: Bắt buộc phải thiết lập biến môi trường JWT_SECRET trong môi trường Production!');
+    process.exit(1);
+} else if (!process.env.JWT_SECRET) {
+    console.warn('⚠️  [BẢO MẬT]: Đang dùng JWT_SECRET dự phòng nội bộ. Khuyến nghị cấu hình JWT_SECRET trong file .env khi đưa lên máy chủ thực tế.');
+}
+
 server.listen(PORT, () => {
     console.log(`==================================================================`);
     console.log(`🎓 HỆ THỐNG QUẢN LÝ ĐÀO TẠO SAU ĐẠI HỌC - AGU MASTER SYSTEM`);

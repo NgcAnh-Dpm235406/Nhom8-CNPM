@@ -16,7 +16,8 @@ import {
   Trash2,
   Sparkles,
   X,
-  CreditCard
+  CreditCard,
+  Download
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useBrowserAlert } from '../../hooks/useBrowserAlert';
@@ -394,6 +395,84 @@ export const AcademicAndTuitionSection = ({ mode, students, lecturers }: Props) 
     const pendingSlips = tuitionList.filter(item => item.payment_slip_status === 'Chờ xác nhận').length;
     return { totalBase, totalPaid, totalDebt, pendingSlips };
   }, [tuitionList]);
+
+  // Xuất danh sách học phí & công nợ ra Excel phục vụ Phòng Kế hoạch - Tài chính
+  const exportTuitionToExcel = async () => {
+    if (filteredTuition.length === 0) {
+      window.alert('Không có bản ghi học phí nào phù hợp để xuất danh sách.');
+      return;
+    }
+
+    try {
+      const { default: ExcelJS } = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Báo cáo Học phí SĐH');
+
+      worksheet.columns = [
+        { header: 'STT', key: 'stt', width: 8 },
+        { header: 'Mã học viên', key: 'student_code', width: 16 },
+        { header: 'Họ và tên', key: 'full_name', width: 26 },
+        { header: 'Học kỳ', key: 'semester_name', width: 22 },
+        { header: 'Số TC đăng ký', key: 'registered_credits', width: 16 },
+        { header: 'Học phí gốc (VNĐ)', key: 'base_amount', width: 20 },
+        { header: 'Đã thanh toán (VNĐ)', key: 'paid_amount', width: 20 },
+        { header: 'Còn nợ (VNĐ)', key: 'outstanding_balance', width: 20 },
+        { header: 'Phạt trễ hạn (VNĐ)', key: 'late_penalty_fee', width: 20 },
+        { header: 'Hạn nộp', key: 'due_date', width: 15 },
+        { header: 'Trạng thái học phí', key: 'status', width: 20 },
+        { header: 'Trạng thái biên lai', key: 'payment_slip_status', width: 22 }
+      ];
+
+      const headerRow = worksheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0284C7' }
+      };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+      headerRow.height = 28;
+
+      filteredTuition.forEach((t, idx) => {
+        const row = worksheet.addRow({
+          stt: idx + 1,
+          student_code: t.student_code || '',
+          full_name: t.student_name || '',
+          semester_name: t.semester_name || '',
+          registered_credits: t.registered_credits || 0,
+          base_amount: Number(t.base_amount || 0).toLocaleString('vi-VN'),
+          paid_amount: Number(t.paid_amount || 0).toLocaleString('vi-VN'),
+          outstanding_balance: Number(t.outstanding_balance || 0).toLocaleString('vi-VN'),
+          late_penalty_fee: Number(t.late_penalty_fee || 0).toLocaleString('vi-VN'),
+          due_date: t.due_date ? new Date(t.due_date).toLocaleDateString('vi-VN') : '',
+          status: t.status || '',
+          payment_slip_status: t.payment_slip_status || 'Chưa gửi'
+        });
+
+        if (idx % 2 === 1) {
+          row.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF8FAFC' }
+          };
+        }
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Bao_cao_hoc_phi_SDH_AGU_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Lỗi xuất file Excel học phí:', err);
+      window.alert('Không thể tạo file Excel học phí: ' + (err instanceof Error ? err.message : 'Lỗi không xác định'));
+    }
+  };
 
   // Helper for day of week label
   const getDayLabel = (d: number) => {
@@ -1311,6 +1390,16 @@ export const AcademicAndTuitionSection = ({ mode, students, lecturers }: Props) 
               title="Tải lại danh sách"
             >
               <RefreshCw className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void exportTuitionToExcel()}
+              className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+              title="Xuất Excel danh sách công nợ & học phí phục vụ Phòng KHTC"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Xuất Excel</span>
             </button>
           </div>
         </div>

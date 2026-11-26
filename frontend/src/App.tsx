@@ -1,17 +1,25 @@
-import { LoginPage } from './features/auth/LoginPage';
-import { useState } from 'react';
-import type { AuthUser, RoleCode, TabType } from './types';
-import type { AdminSection } from './types';
+import { lazy, Suspense, useState } from 'react';
+import type { AuthUser, RoleCode, TabType, AdminSection } from './types';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { HomePage } from './features/home/HomePage';
-import { RegisterPage } from './features/admission/RegisterPage';
-import { ResultLookupPage } from './features/lookup/ResultLookupPage';
-import { StudentDashboard } from './features/student/StudentDashboard';
-import { StudentProfilePage } from './features/student/StudentProfilePage';
-import { FacultyDashboard } from './features/faculty/FacultyDashboard';
-import { AdminDashboard } from './features/admin/BangDieuKhienQuanTri';
-import { FormsPage } from './features/forms/FormsPage';
+
+// Lazy loading các phân hệ độc lập để tối ưu dung lượng tải trang ban đầu (Code-splitting)
+const FormsPage = lazy(() => import('./features/forms/FormsPage').then(m => ({ default: m.FormsPage })));
+const RegisterPage = lazy(() => import('./features/admission/RegisterPage').then(m => ({ default: m.RegisterPage })));
+const ResultLookupPage = lazy(() => import('./features/lookup/ResultLookupPage').then(m => ({ default: m.ResultLookupPage })));
+const StudentDashboard = lazy(() => import('./features/student/StudentDashboard').then(m => ({ default: m.StudentDashboard })));
+const StudentProfilePage = lazy(() => import('./features/student/StudentProfilePage').then(m => ({ default: m.StudentProfilePage })));
+const FacultyDashboard = lazy(() => import('./features/faculty/FacultyDashboard').then(m => ({ default: m.FacultyDashboard })));
+const AdminDashboard = lazy(() => import('./features/admin/BangDieuKhienQuanTri').then(m => ({ default: m.AdminDashboard })));
+const LoginPage = lazy(() => import('./features/auth/LoginPage').then(m => ({ default: m.LoginPage })));
+
+const PageLoadingFallback = () => (
+  <div className="flex min-h-[400px] flex-col items-center justify-center space-y-3 py-20 text-center">
+    <div className="h-10 w-10 animate-spin rounded-full border-4 border-sky-600 border-t-transparent shadow-sm" />
+    <p className="text-xs font-semibold text-slate-500">Đang tải dữ liệu phân hệ AGU PostGrad...</p>
+  </div>
+);
 
 interface AuthSession {
   token: string;
@@ -71,7 +79,7 @@ const readSession = (): AuthSession | null => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [selectedMajor, setSelectedMajor] = useState<string>('8480205');
+  const [selectedMajor, setSelectedMajor] = useState<string>('8480201');
   const [lookupSearchKey, setLookupSearchKey] = useState('');
   const [session, setSession] = useState<AuthSession | null>(readSession);
   const activeAdminSection = adminSections[activeTab];
@@ -115,36 +123,38 @@ export default function App() {
       <Navbar activeTab={activeTab} setActiveTab={navigate} user={session?.user ?? null} onLogout={handleLogout} />
 
       <main className="flex-1 pb-16">
-        {activeTab === 'home' && <HomePage onNavigate={handleNavigate} />}
-        {activeTab === 'forms' && <FormsPage />}
-        {activeTab === 'register' && allowedTabs.includes('register') && (
-          <RegisterPage
-            initialMajorCode={selectedMajor}
-            onNavigateToLookup={profileCode => {
-              setLookupSearchKey(profileCode);
-              handleNavigate('lookup');
-            }}
-          />
-        )}
-        {activeTab === 'lookup' && allowedTabs.includes('lookup') && (
-          <ResultLookupPage initialSearchKey={lookupSearchKey} />
-        )}
-        {activeTab === 'student' && allowedTabs.includes('student') && <StudentDashboard />}
-        {activeTab === 'student-profile' && allowedTabs.includes('student-profile') && <StudentProfilePage />}
-        {activeTab === 'faculty' && allowedTabs.includes('faculty') && <FacultyDashboard />}
-        {activeAdminSection && allowedTabs.includes(activeTab) && (
-          <AdminDashboard
-            key={activeTab}
-            section={activeAdminSection}
-            onNavigateTab={handleNavigate}
-          />
-        )}
-        {activeTab === 'login' && allowedTabs.includes('login') && (
-          <LoginPage
-            onAuthenticated={handleAuthenticated}
-            onNavigateToRegister={() => handleNavigate('register')}
-          />
-        )}
+        <Suspense fallback={<PageLoadingFallback />}>
+          {activeTab === 'home' && <HomePage onNavigate={handleNavigate} />}
+          {activeTab === 'forms' && <FormsPage />}
+          {activeTab === 'register' && allowedTabs.includes('register') && (
+            <RegisterPage
+              initialMajorCode={selectedMajor}
+              onNavigateToLookup={profileCode => {
+                setLookupSearchKey(profileCode);
+                handleNavigate('lookup');
+              }}
+            />
+          )}
+          {activeTab === 'lookup' && allowedTabs.includes('lookup') && (
+            <ResultLookupPage initialSearchKey={lookupSearchKey} />
+          )}
+          {activeTab === 'student' && allowedTabs.includes('student') && <StudentDashboard />}
+          {activeTab === 'student-profile' && allowedTabs.includes('student-profile') && <StudentProfilePage />}
+          {activeTab === 'faculty' && allowedTabs.includes('faculty') && <FacultyDashboard />}
+          {activeAdminSection && allowedTabs.includes(activeTab) && (
+            <AdminDashboard
+              key={activeTab}
+              section={activeAdminSection}
+              onNavigateTab={handleNavigate}
+            />
+          )}
+          {activeTab === 'login' && allowedTabs.includes('login') && (
+            <LoginPage
+              onAuthenticated={handleAuthenticated}
+              onNavigateToRegister={() => handleNavigate('register')}
+            />
+          )}
+        </Suspense>
       </main>
 
       <Footer />

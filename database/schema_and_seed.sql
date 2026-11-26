@@ -719,6 +719,20 @@ INSERT INTO [qa_survey_campaigns] ([template_id], [class_id], [start_date], [end
 (1, 1, '2024-09-01', '2027-12-31');
 GO
 
+-- 15. Chỉ mục phụ (Non-Clustered Indexes) tối ưu hóa hiệu năng truy vấn
+CREATE NONCLUSTERED INDEX [IX_tuition_student_semester] ON [tuition_fees] ([student_id], [semester_id]);
+CREATE NONCLUSTERED INDEX [IX_tuition_payment_slip] ON [tuition_fees] ([payment_slip_status]);
+CREATE NONCLUSTERED INDEX [IX_reg_student_class] ON [course_registrations] ([student_id], [class_id]);
+CREATE NONCLUSTERED INDEX [IX_schedules_class_lecturer] ON [schedules] ([class_id], [lecturer_id]);
+CREATE NONCLUSTERED INDEX [IX_advisor_assignments_lec_status] ON [advisor_assignments] ([lecturer_id], [status]);
+CREATE NONCLUSTERED INDEX [IX_advisor_assignments_student] ON [advisor_assignments] ([student_id], [status]);
+CREATE NONCLUSTERED INDEX [IX_thesis_progress_student] ON [thesis_progress] ([student_id]);
+CREATE NONCLUSTERED INDEX [IX_thesis_submissions_thesis] ON [thesis_submissions] ([thesis_id], [status]);
+CREATE NONCLUSTERED INDEX [IX_notifications_target] ON [notifications] ([target_user_id], [target_role_id], [is_read]);
+CREATE NONCLUSTERED INDEX [IX_audit_logs_user_created] ON [audit_logs] ([user_id], [created_at] DESC);
+CREATE NONCLUSTERED INDEX [IX_admission_profiles_campaign_status] ON [admission_profiles] ([campaign_id], [status]);
+GO
+
 PRINT N'=============================================================================';
 PRINT N'✅ KHỞI TẠO CƠ SỞ DỮ LIỆU AGU POSTGRAD (THẠC SĨ) VÀ SEED DATA THÀNH CÔNG 100%!';
 PRINT N'=============================================================================';
